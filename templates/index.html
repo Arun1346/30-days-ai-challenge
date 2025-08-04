@@ -1,12 +1,84 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Voice Agent - Day 1</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Day 3: Voice Agent UI</title>
+    <!-- 
+      FIXED: Changed the src to a direct path that FastAPI understands.
+      The old Flask-style code "{{ url_for(...) }}" is removed.
+    -->
+    <script src="/static/script.js" defer></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f2f5;
+        }
+        .container {
+            width: 90%;
+            max-width: 500px;
+            padding: 2rem;
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        h1 {
+            font-size: 1.5rem;
+            color: #1c1e21;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 0.75rem;
+            margin-top: 1rem;
+            border: 1px solid #dddfe2;
+            border-radius: 8px;
+            font-size: 1rem;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            margin-top: 1rem;
+            border: none;
+            border-radius: 8px;
+            background-color: #1877f2;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:disabled {
+            background-color: #a0bdf5;
+            cursor: not-allowed;
+        }
+        button:hover:not(:disabled) {
+            background-color: #166fe5;
+        }
+        #audio-container {
+            margin-top: 1.5rem;
+        }
+        audio {
+            width: 100%;
+        }
+    </style>
 </head>
 <body>
-    <h1>Hello from Voice Agent!</h1>
-    <button onclick="sayHello()">Click Me</button>
-
-    <script src="/static/script.js"></script>
+    <div class="container">
+        <h1>AI Voice Agent</h1>
+        <textarea id="text-input" placeholder="Enter text to convert to speech..."></textarea>
+        <button id="generate-button">Generate Audio</button>
+        <div id="audio-container">
+            <!-- The audio player will be created here by JavaScript -->
+        </div>
+    </div>
 </body>
 </html>
