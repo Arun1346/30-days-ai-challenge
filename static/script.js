@@ -1,68 +1,109 @@
+// Wait for the HTML content to be fully loaded before running the script
 document.addEventListener('DOMContentLoaded', () => {
 
-    // Get references to the HTML elements we need
+    // --- DAY 3: TEXT-TO-SPEECH FUNCTIONALITY ---
     const textInput = document.getElementById('text-input');
     const generateButton = document.getElementById('generate-button');
     const audioContainer = document.getElementById('audio-container');
 
-    // Add a 'click' event listener to the button
     generateButton.addEventListener('click', async () => {
         const text = textInput.value.trim();
-
-        // Check if the user entered any text
         if (!text) {
             alert('Please enter some text.');
             return;
         }
-
-        // Disable the button and show a "loading" state to prevent multiple clicks
         generateButton.disabled = true;
         generateButton.textContent = 'Generating...';
-        audioContainer.innerHTML = ''; // Clear any previous audio player
+        audioContainer.innerHTML = '';
 
         try {
-            // Send the text to our backend '/generate-speech' endpoint
             const response = await fetch('/generate-speech', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: text }),
             });
-
-            // Check if the network request itself was successful
-            if (!response.ok) {
-                throw new Error('Network response was not ok.');
-            }
-
-            // Get the JSON data from the response (e.g., {"audio_url": "..."})
+            if (!response.ok) throw new Error('Network response was not ok.');
+            
             const data = await response.json();
+            if (data.error) throw new Error(data.error);
 
-            // Check if our server returned an error message (like API key failure)
-            if (data.error) {
-                throw new Error(data.error);
-            }
-
-            // If we get a successful response with an audio URL
             if (data.audio_url) {
-                // Create a new HTML <audio> element
                 const audioPlayer = document.createElement('audio');
                 audioPlayer.src = data.audio_url;
-                audioPlayer.controls = true; // Show the default audio controls (play, pause, volume)
-                audioPlayer.autoplay = true; // Automatically start playing the audio
-
-                // Add the new audio player to our container div
+                audioPlayer.controls = true;
+                audioPlayer.autoplay = true;
                 audioContainer.appendChild(audioPlayer);
             }
-
         } catch (error) {
-            // If anything goes wrong, show an alert and log the error to the console
             console.error('Error:', error);
-            alert('Failed to generate audio. Please try again. ' + error.message);
+            alert('Failed to generate audio. ' + error.message);
         } finally {
-            // Re-enable the button and reset its text, whether the request succeeded or failed
             generateButton.disabled = false;
             generateButton.textContent = 'Generate Audio';
+        }
+    });
+
+    // --- DAY 4: ECHO BOT FUNCTIONALITY ---
+    const startButton = document.getElementById('start-recording');
+    const stopButton = document.getElementById('stop-recording');
+    const echoAudioContainer = document.getElementById('echo-audio-container');
+    
+    let mediaRecorder;
+    let audioChunks = [];
+
+    // START RECORDING
+    startButton.addEventListener('click', async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            
+            mediaRecorder.addEventListener('dataavailable', event => {
+                audioChunks.push(event.data);
+            });
+
+            mediaRecorder.addEventListener('stop', () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                // --- DIAGNOSTIC LOGGING ---
+                console.log("Recording stopped. Setting loading message.");
+                
+                echoAudioContainer.innerHTML = '<p>Loading audio...</p>';
+
+                const audioPlayer = document.createElement('audio');
+                audioPlayer.src = audioUrl;
+                audioPlayer.controls = true;
+                
+                audioPlayer.addEventListener('loadedmetadata', () => {
+                    // --- DIAGNOSTIC LOGGING ---
+                    console.log("Audio metadata loaded. Displaying player.");
+                    
+                    echoAudioContainer.innerHTML = '';
+                    echoAudioContainer.appendChild(audioPlayer);
+                    audioPlayer.play();
+                });
+
+                audioChunks = [];
+            });
+
+            mediaRecorder.start();
+            startButton.disabled = true;
+            stopButton.disabled = false;
+            startButton.textContent = "Recording...";
+
+        } catch (error) {
+            console.error("Error accessing microphone:", error);
+            alert("Could not access microphone. Please ensure you grant permission.");
+        }
+    });
+
+    // STOP RECORDING
+    stopButton.addEventListener('click', () => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            startButton.textContent = "Start Recording";
         }
     });
 });
