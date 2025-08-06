@@ -3,11 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Day 4: Echo Bot</title>
-    <!-- 
-      FIX: Updated cache-busting version to v=3
-    -->
-    <script src="/static/script.js?v=3" defer></script>
+    <title>Day 5: Upload Audio</title>
+    <script src="/static/script.js?v=4" defer></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -75,6 +72,12 @@
         #audio-container, #echo-audio-container {
             margin-top: 1.5rem;
         }
+        /* NEW: Style for the status message */
+        #upload-status {
+            margin-top: 1rem;
+            font-style: italic;
+            color: #65676b;
+        }
         audio {
             width: 100%;
         }
@@ -90,13 +93,15 @@
             <div id="audio-container"></div>
         </div>
 
-        <!-- NEW Echo Bot Section for Day 4 -->
+        <!-- Echo Bot Section for Day 4 & 5 -->
         <div class="section">
             <h1>Echo Bot</h1>
             <div class="button-group">
                 <button id="start-recording">Start Recording</button>
                 <button id="stop-recording" disabled>Stop Recording</button>
             </div>
+            <!-- NEW: Container for the upload status message -->
+            <div id="upload-status"></div>
             <div id="echo-audio-container">
                 <!-- The recorded audio will appear here -->
             </div>

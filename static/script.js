@@ -2,6 +2,7 @@
 document.addEventListener('DOMContentLoaded', () => {
 
     // --- DAY 3: TEXT-TO-SPEECH FUNCTIONALITY ---
+    // (This code remains the same)
     const textInput = document.getElementById('text-input');
     const generateButton = document.getElementById('generate-button');
     const audioContainer = document.getElementById('audio-container');
@@ -43,10 +44,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // --- DAY 4: ECHO BOT FUNCTIONALITY ---
+    // --- DAY 4 & 5: ECHO BOT FUNCTIONALITY ---
     const startButton = document.getElementById('start-recording');
     const stopButton = document.getElementById('stop-recording');
     const echoAudioContainer = document.getElementById('echo-audio-container');
+    const uploadStatus = document.getElementById('upload-status'); // Get the new status element
     
     let mediaRecorder;
     let audioChunks = [];
@@ -61,27 +63,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 audioChunks.push(event.data);
             });
 
+            // This event fires when the recording is stopped
             mediaRecorder.addEventListener('stop', () => {
                 const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                const audioUrl = URL.createObjectURL(audioBlob);
                 
-                // --- DIAGNOSTIC LOGGING ---
-                console.log("Recording stopped. Setting loading message.");
-                
-                echoAudioContainer.innerHTML = '<p>Loading audio...</p>';
+                // --- DAY 5: UPLOAD THE AUDIO ---
+                uploadAudio(audioBlob);
+                // -----------------------------
 
+                // Play the audio back locally (the "echo" part)
+                const audioUrl = URL.createObjectURL(audioBlob);
                 const audioPlayer = document.createElement('audio');
                 audioPlayer.src = audioUrl;
                 audioPlayer.controls = true;
-                
-                audioPlayer.addEventListener('loadedmetadata', () => {
-                    // --- DIAGNOSTIC LOGGING ---
-                    console.log("Audio metadata loaded. Displaying player.");
-                    
-                    echoAudioContainer.innerHTML = '';
-                    echoAudioContainer.appendChild(audioPlayer);
-                    audioPlayer.play();
-                });
+                echoAudioContainer.innerHTML = '';
+                echoAudioContainer.appendChild(audioPlayer);
+                audioPlayer.play();
 
                 audioChunks = [];
             });
@@ -90,6 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
             startButton.disabled = true;
             stopButton.disabled = false;
             startButton.textContent = "Recording...";
+            uploadStatus.textContent = ""; // Clear previous status
 
         } catch (error) {
             console.error("Error accessing microphone:", error);
@@ -106,4 +104,35 @@ document.addEventListener('DOMContentLoaded', () => {
             startButton.textContent = "Start Recording";
         }
     });
+
+    // --- NEW FUNCTION FOR DAY 5: UPLOAD AUDIO ---
+    async function uploadAudio(audioBlob) {
+        // Create a FormData object to send the file
+        const formData = new FormData();
+        // The third argument is the filename the server will see
+        formData.append("audio_file", audioBlob, "recording.wav");
+
+        try {
+            // Update the status message on the UI
+            uploadStatus.textContent = "Uploading...";
+
+            const response = await fetch('/upload-audio', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server responded with ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            // Update the status message with the successful response from the server
+            uploadStatus.textContent = `Upload complete! File: ${result.filename}, Size: ${result.size_kb} KB`;
+
+        } catch (error) {
+            console.error("Upload failed:", error);
+            uploadStatus.textContent = `Upload failed. Please try again.`;
+        }
+    }
 });
