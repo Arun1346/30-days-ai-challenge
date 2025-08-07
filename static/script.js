@@ -1,20 +1,24 @@
-// Wait for the HTML content to be fully loaded before running the script
 document.addEventListener('DOMContentLoaded', () => {
+    console.log("DOM fully loaded. Aether Voice script is running.");
 
-    // --- DAY 3: TEXT-TO-SPEECH FUNCTIONALITY ---
-    // (This code remains the same)
+    // --- TEXT-TO-SPEECH FUNCTIONALITY ---
     const textInput = document.getElementById('text-input');
     const generateButton = document.getElementById('generate-button');
     const audioContainer = document.getElementById('audio-container');
 
+    if (!textInput || !generateButton || !audioContainer) {
+        console.error("TTS elements not found! Please check the IDs in your index.html file.");
+        return;
+    }
+
     generateButton.addEventListener('click', async () => {
+        console.log("Generate Audio button clicked.");
         const text = textInput.value.trim();
-        if (!text) {
-            alert('Please enter some text.');
-            return;
-        }
+        if (!text) return alert('Please enter some text.');
+        
+        const originalButtonText = generateButton.innerHTML;
         generateButton.disabled = true;
-        generateButton.textContent = 'Generating...';
+        generateButton.innerHTML = 'Generating...';
         audioContainer.innerHTML = '';
 
         try {
@@ -24,15 +28,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ text: text }),
             });
             if (!response.ok) throw new Error('Network response was not ok.');
-            
             const data = await response.json();
             if (data.error) throw new Error(data.error);
-
             if (data.audio_url) {
                 const audioPlayer = document.createElement('audio');
                 audioPlayer.src = data.audio_url;
                 audioPlayer.controls = true;
                 audioPlayer.autoplay = true;
+                audioPlayer.classList.add('w-full', 'mt-4');
                 audioContainer.appendChild(audioPlayer);
             }
         } catch (error) {
@@ -40,46 +43,48 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Failed to generate audio. ' + error.message);
         } finally {
             generateButton.disabled = false;
-            generateButton.textContent = 'Generate Audio';
+            generateButton.innerHTML = originalButtonText;
         }
     });
 
-    // --- DAY 4 & 5: ECHO BOT FUNCTIONALITY ---
+    // --- ECHO BOT & VISUALIZER ---
     const startButton = document.getElementById('start-recording');
     const stopButton = document.getElementById('stop-recording');
     const echoAudioContainer = document.getElementById('echo-audio-container');
-    const uploadStatus = document.getElementById('upload-status'); // Get the new status element
+    const transcriptionContainer = document.getElementById('transcription-container');
+    const canvas = document.getElementById('visualizer');
+
+    if (!startButton || !stopButton || !echoAudioContainer || !transcriptionContainer || !canvas) {
+        console.error("Echo Bot elements not found! Please check the IDs in your index.html file.");
+        return;
+    }
     
+    const canvasCtx = canvas.getContext('2d');
+    let audioCtx;
+    let analyser;
+    let animationFrameId;
     let mediaRecorder;
     let audioChunks = [];
 
-    // START RECORDING
     startButton.addEventListener('click', async () => {
+        console.log("Start Recording button clicked.");
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            
-            mediaRecorder.addEventListener('dataavailable', event => {
-                audioChunks.push(event.data);
-            });
+            startVisualizer(stream);
 
-            // This event fires when the recording is stopped
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.addEventListener('dataavailable', event => audioChunks.push(event.data));
             mediaRecorder.addEventListener('stop', () => {
                 const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                
-                // --- DAY 5: UPLOAD THE AUDIO ---
-                uploadAudio(audioBlob);
-                // -----------------------------
-
-                // Play the audio back locally (the "echo" part)
+                transcribeAudio(audioBlob);
                 const audioUrl = URL.createObjectURL(audioBlob);
                 const audioPlayer = document.createElement('audio');
                 audioPlayer.src = audioUrl;
                 audioPlayer.controls = true;
+                audioPlayer.classList.add('w-full', 'mt-4');
                 echoAudioContainer.innerHTML = '';
                 echoAudioContainer.appendChild(audioPlayer);
                 audioPlayer.play();
-
                 audioChunks = [];
             });
 
@@ -87,7 +92,6 @@ document.addEventListener('DOMContentLoaded', () => {
             startButton.disabled = true;
             stopButton.disabled = false;
             startButton.textContent = "Recording...";
-            uploadStatus.textContent = ""; // Clear previous status
 
         } catch (error) {
             console.error("Error accessing microphone:", error);
@@ -95,44 +99,74 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // STOP RECORDING
     stopButton.addEventListener('click', () => {
+        console.log("Stop Recording button clicked.");
         if (mediaRecorder && mediaRecorder.state === 'recording') {
             mediaRecorder.stop();
+            stopVisualizer();
             startButton.disabled = false;
             stopButton.disabled = true;
             startButton.textContent = "Start Recording";
         }
     });
 
-    // --- NEW FUNCTION FOR DAY 5: UPLOAD AUDIO ---
-    async function uploadAudio(audioBlob) {
-        // Create a FormData object to send the file
+    async function transcribeAudio(audioBlob) {
         const formData = new FormData();
-        // The third argument is the filename the server will see
         formData.append("audio_file", audioBlob, "recording.wav");
-
         try {
-            // Update the status message on the UI
-            uploadStatus.textContent = "Uploading...";
-
-            const response = await fetch('/upload-audio', {
-                method: 'POST',
-                body: formData,
-            });
-
-            if (!response.ok) {
-                throw new Error(`Server responded with ${response.status}`);
-            }
-
+            transcriptionContainer.textContent = "Transcribing...";
+            const response = await fetch('/transcribe/file', { method: 'POST', body: formData });
+            if (!response.ok) throw new Error(`Server responded with ${response.status}`);
             const result = await response.json();
-            
-            // Update the status message with the successful response from the server
-            uploadStatus.textContent = `Upload complete! File: ${result.filename}, Size: ${result.size_kb} KB`;
-
+            if (result.error) throw new Error(result.error);
+            transcriptionContainer.textContent = result.transcription;
         } catch (error) {
-            console.error("Upload failed:", error);
-            uploadStatus.textContent = `Upload failed. Please try again.`;
+            console.error("Transcription failed:", error);
+            transcriptionContainer.textContent = `Transcription failed: ${error.message}`;
+        }
+    }
+
+    function startVisualizer(stream) {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        analyser = audioCtx.createAnalyser();
+        const source = audioCtx.createMediaStreamSource(stream);
+        source.connect(analyser);
+
+        analyser.fftSize = 256;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        draw(dataArray, bufferLength);
+    }
+
+    function stopVisualizer() {
+        cancelAnimationFrame(animationFrameId);
+        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function draw(dataArray, bufferLength) {
+        animationFrameId = requestAnimationFrame(() => draw(dataArray, bufferLength));
+        analyser.getByteFrequencyData(dataArray);
+
+        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const barWidth = (canvas.width / bufferLength) * 1.5;
+        let barHeight;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+            barHeight = dataArray[i] / 2.5;
+            
+            const gradient = canvasCtx.createLinearGradient(0, canvas.height, 0, canvas.height - barHeight);
+            gradient.addColorStop(0, '#a855f7'); // Purple
+            gradient.addColorStop(1, '#6366f1'); // Blue
+
+            canvasCtx.fillStyle = gradient;
+            canvasCtx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+
+            x += barWidth + 2;
         }
     }
 });

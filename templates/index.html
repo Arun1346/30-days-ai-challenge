@@ -1,109 +1,104 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Day 5: Upload Audio</title>
-    <script src="/static/script.js?v=4" defer></script>
-    <style>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Aether Voice</title>
+    <!-- ADDED a cache-busting query string '?v=1' to the script tag -->
+    <script src="/static/script.js?v=1" defer></script>
+    <link href="https://fonts.googleapis.com" rel="preconnect"/>
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+    <!-- This line loads the Tailwind CSS framework -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <style type="text/tailwindcss">
+        :root {
+            --primary-color: #4d19e6;
+            --background-color: #050505;
+            --glass: rgba(10, 8, 14, 0.6);
+            --accent-neon-blue: #6366f1;
+            --accent-neon-purple: #a855f7;
+            --text-primary: #e5e7eb;
+            --text-secondary: #9ca3af;
+        }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            background-color: #f0f2f5;
-            padding: 1rem 0;
+            font-family: "Space Grotesk", sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-primary);
         }
-        .container {
-            width: 90%;
-            max-width: 500px;
-            padding: 2rem;
-            background-color: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            text-align: center;
+        .main_container {
+            @apply max-w-4xl mx-auto p-6;
         }
-        h1 {
-            font-size: 1.5rem;
-            color: #1c1e21;
+        .glass_container {
+            @apply bg-[var(--glass)] backdrop-blur-xl rounded-2xl p-8 border border-white/10 shadow-2xl shadow-purple-500/10;
         }
-        textarea {
-            width: 100%;
-            height: 100px;
-            padding: 0.75rem;
-            margin-top: 1rem;
-            border: 1px solid #dddfe2;
-            border-radius: 8px;
-            font-size: 1rem;
-            resize: vertical;
-            box-sizing: border-box;
+        .typography_h1 {
+            @apply text-5xl font-bold text-center mb-12 bg-clip-text text-transparent bg-gradient-to-r from-[var(--accent-neon-blue)] to-[var(--accent-neon-purple)];
         }
-        button {
-            width: 100%;
-            padding: 0.75rem;
-            margin-top: 1rem;
-            border: none;
-            border-radius: 8px;
-            background-color: #1877f2;
-            color: white;
-            font-size: 1.1rem;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background-color 0.2s;
+        .typography_h2 {
+            @apply text-2xl font-semibold mb-4 text-[var(--text-primary)];
         }
-        button:disabled {
-            background-color: #a0bdf5;
-            cursor: not-allowed;
+        .input {
+            @apply bg-black/30 border border-white/10 rounded-lg p-4 w-full focus:outline-none focus:ring-2 focus:ring-[var(--accent-neon-blue)] focus:border-transparent transition-all duration-300 placeholder:text-[var(--text-secondary)] min-h-[120px] resize-none;
         }
-        button:hover:not(:disabled) {
-            background-color: #166fe5;
+        .button_primary {
+            @apply bg-gradient-to-r from-[var(--accent-neon-blue)] to-[var(--accent-neon-purple)] hover:from-[var(--accent-neon-purple)] hover:to-[var(--accent-neon-blue)] text-white font-bold py-3 px-8 rounded-lg focus:outline-none transition-all duration-300 shadow-[0_0_15px] shadow-purple-500/50 hover:shadow-[0_0_25px] hover:shadow-blue-500/70;
         }
-        .section {
-            margin-top: 2rem;
-            padding-top: 2rem;
-            border-top: 1px solid #dddfe2;
+        .button_secondary {
+            @apply bg-white/10 hover:bg-white/20 text-[var(--text-primary)] font-bold py-3 px-6 rounded-lg focus:outline-none transition-all duration-300;
         }
-        .button-group {
-            display: flex;
-            gap: 1rem;
+        .transcribed_text {
+            @apply mt-6 p-4 bg-black/30 rounded-lg min-h-[80px] text-[var(--text-secondary)] italic;
         }
-        #audio-container, #echo-audio-container {
-            margin-top: 1.5rem;
+        .voice_visualizer {
+            @apply w-full h-24 bg-black/30 rounded-lg flex items-center justify-center border border-white/10 mb-6;
         }
-        /* NEW: Style for the status message */
-        #upload-status {
-            margin-top: 1rem;
-            font-style: italic;
-            color: #65676b;
+        @keyframes subtle-gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
-        audio {
-            width: 100%;
+        .bg-animated-gradient {
+            background: linear-gradient(-45deg, #050505, #0a0815, #100c2a, #0a0815, #050505);
+            background-size: 400% 400%;
+            animation: subtle-gradient 15s ease infinite;
         }
     </style>
 </head>
-<body>
-    <div class="container">
-        <!-- Text-to-Speech Section from Day 3 -->
-        <div>
-            <h1>AI Voice Agent (TTS)</h1>
-            <textarea id="text-input" placeholder="Enter text to convert to speech..."></textarea>
-            <button id="generate-button">Generate Audio</button>
-            <div id="audio-container"></div>
-        </div>
-
-        <!-- Echo Bot Section for Day 4 & 5 -->
-        <div class="section">
-            <h1>Echo Bot</h1>
-            <div class="button-group">
-                <button id="start-recording">Start Recording</button>
-                <button id="stop-recording" disabled>Stop Recording</button>
-            </div>
-            <!-- NEW: Container for the upload status message -->
-            <div id="upload-status"></div>
-            <div id="echo-audio-container">
-                <!-- The recorded audio will appear here -->
+<body class="bg-animated-gradient">
+    <div class="relative flex size-full min-h-screen flex-col items-center justify-center overflow-x-hidden p-4">
+        <div class="main_container w-full">
+            <div class="glass_container">
+                <h1 class="typography_h1">Aether Voice</h1>
+                <div class="grid md:grid-cols-2 gap-12">
+                    <!-- Text-to-Speech Section -->
+                    <div class="flex flex-col space-y-6">
+                        <h2 class="typography_h2">Text-to-Speech</h2>
+                        <textarea id="text-input" class="input" placeholder="Enter text to convert to speech"></textarea>
+                        <div class="text-center">
+                            <button id="generate-button" class="button_primary">Generate Audio</button>
+                        </div>
+                        <div id="audio-container"></div>
+                    </div>
+                    <!-- Voice Interaction Section -->
+                    <div class="flex flex-col space-y-6">
+                        <h2 class="typography_h2">Voice Interaction</h2>
+                        <div class="voice_visualizer">
+                            <canvas id="visualizer" class="w-full h-full"></canvas>
+                        </div>
+                        <div class="flex items-center justify-center gap-4">
+                            <button id="start-recording" class="button_primary w-full">Start Recording</button>
+                            <button id="stop-recording" class="button_secondary w-full" disabled>Stop Recording</button>
+                        </div>
+                        <div>
+                            <p class="text-[var(--text-primary)] mb-2 font-semibold">Transcribed Text:</p>
+                            <div id="transcription-container" class="transcribed_text">
+                                Your transcribed text will appear here...
+                            </div>
+                        </div>
+                        <div id="echo-audio-container"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

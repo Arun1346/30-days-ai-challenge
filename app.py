@@ -7,17 +7,12 @@ import uvicorn
 from dotenv import load_dotenv
 from pydantic import BaseModel
 import time
-import shutil
+import assemblyai # Import the new library
 
-# This line loads the MURF_API_KEY from your .env file
+# This line loads your API keys from the .env file
 load_dotenv()
 
 app = FastAPI()
-
-# --- Create an 'uploads' directory if it doesn't exist ---
-UPLOADS_DIR = "uploads"
-os.makedirs(UPLOADS_DIR, exist_ok=True)
-# -------------------------------------------------------------
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -32,7 +27,6 @@ def read_root():
 class SpeechRequest(BaseModel):
     text: str
 
-# --- RE-ENABLING THE MOCK RESPONSE ---
 @app.post("/generate-speech")
 def generate_speech(request: SpeechRequest):
     """
@@ -43,29 +37,32 @@ def generate_speech(request: SpeechRequest):
     return {"audio_url": "https://interactive-examples.mdn.mozilla.net/media/cc0-audio/t-rex-roar.mp3"}
 
 
-# --- Endpoint for Day 5 ---
-@app.post("/upload-audio")
-async def upload_audio(audio_file: UploadFile = File(...)):
+# --- NEW ENDPOINT FOR DAY 6 ---
+@app.post("/transcribe/file")
+async def transcribe_file(audio_file: UploadFile = File(...)):
     """
-    Receives an audio file from the client, saves it to the server,
-    and returns details about the file.
+    Receives an audio file, transcribes it using AssemblyAI,
+    and returns the transcription text.
     """
-    # Define the path where the file will be saved
-    file_path = os.path.join(UPLOADS_DIR, audio_file.filename)
-    
-    # Save the uploaded file to the server
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(audio_file.file, buffer)
-        
-    # Get file size
-    file_size = os.path.getsize(file_path)
-    
-    # Return the file details as a JSON response
-    return {
-        "filename": audio_file.filename,
-        "content_type": audio_file.content_type,
-        "size_kb": round(file_size / 1024, 2)
-    }
+    try:
+        # Configure the AssemblyAI transcriber with your API key
+        assemblyai.settings.api_key = os.getenv("ASSEMBLYAI_API_KEY")
+        transcriber = assemblyai.Transcriber()
+
+        # The SDK can directly transcribe the binary data from the uploaded file
+        # We don't need to save the file to disk first
+        transcript = transcriber.transcribe(audio_file.file)
+
+        # Check for transcription errors
+        if transcript.status == assemblyai.TranscriptStatus.error:
+            return {"error": transcript.error}
+
+        # Return the transcribed text
+        return {"transcription": transcript.text}
+
+    except Exception as e:
+        print(f"Error during transcription: {e}")
+        return {"error": "Failed to transcribe audio."}
 # ---------------------------------
 
 
