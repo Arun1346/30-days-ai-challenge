@@ -4,7 +4,6 @@
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>Aether Voice</title>
-    <!-- ADDED a cache-busting query string '?v=1' to the script tag -->
     <script src="/static/script.js?v=1" defer></script>
     <link href="https://fonts.googleapis.com" rel="preconnect"/>
     <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
@@ -38,8 +37,12 @@
         .typography_h2 {
             @apply text-2xl font-semibold mb-4 text-[var(--text-primary)];
         }
+        .input, .select {
+            @apply bg-black/30 border border-white/10 rounded-lg p-4 w-full focus:outline-none focus:ring-2 focus:ring-[var(--accent-neon-blue)] focus:border-transparent transition-all duration-300 placeholder:text-[var(--text-secondary)];
+        }
         .input {
-            @apply bg-black/30 border border-white/10 rounded-lg p-4 w-full focus:outline-none focus:ring-2 focus:ring-[var(--accent-neon-blue)] focus:border-transparent transition-all duration-300 placeholder:text-[var(--text-secondary)] min-h-[120px] resize-none;
+            min-height: 120px;
+            resize: none;
         }
         .button_primary {
             @apply bg-gradient-to-r from-[var(--accent-neon-blue)] to-[var(--accent-neon-purple)] hover:from-[var(--accent-neon-purple)] hover:to-[var(--accent-neon-blue)] text-white font-bold py-3 px-8 rounded-lg focus:outline-none transition-all duration-300 shadow-[0_0_15px] shadow-purple-500/50 hover:shadow-[0_0_25px] hover:shadow-blue-500/70;
@@ -75,6 +78,9 @@
                     <div class="flex flex-col space-y-6">
                         <h2 class="typography_h2">Text-to-Speech</h2>
                         <textarea id="text-input" class="input" placeholder="Enter text to convert to speech"></textarea>
+                        <select id="tts-voice-select" class="select">
+                            <option>Loading voices...</option>
+                        </select>
                         <div class="text-center">
                             <button id="generate-button" class="button_primary">Generate Audio</button>
                         </div>
@@ -82,10 +88,14 @@
                     </div>
                     <!-- Voice Interaction Section -->
                     <div class="flex flex-col space-y-6">
-                        <h2 class="typography_h2">Voice Interaction</h2>
+                        <!-- FIXED: Changed the heading to match the challenge task -->
+                        <h2 class="typography_h2">Echo Bot</h2>
                         <div class="voice_visualizer">
                             <canvas id="visualizer" class="w-full h-full"></canvas>
                         </div>
+                        <select id="echo-voice-select" class="select">
+                            <option>Loading voices...</option>
+                        </select>
                         <div class="flex items-center justify-center gap-4">
                             <button id="start-recording" class="button_primary w-full">Start Recording</button>
                             <button id="stop-recording" class="button_secondary w-full" disabled>Stop Recording</button>
