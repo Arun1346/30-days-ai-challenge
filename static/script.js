@@ -1,7 +1,7 @@
 document.addEventListener('DOMContentLoaded', async () => {
     console.log("DOM fully loaded. Aether Voice script is running.");
 
-    // --- NEW: Fetch and populate voices on page load ---
+    // --- Fetch and populate voices on page load ---
     const ttsVoiceSelect = document.getElementById('tts-voice-select');
     const echoVoiceSelect = document.getElementById('echo-voice-select');
     
@@ -9,15 +9,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const response = await fetch('/voices');
             const data = await response.json();
-            if (data.error || !data.voices) {
-                throw new Error('Could not load voices.');
-            }
+            if (data.error || !data.voices) throw new Error('Could not load voices.');
             
-            // Clear the 'loading' option
             ttsVoiceSelect.innerHTML = '';
             echoVoiceSelect.innerHTML = '';
 
-            // Populate both dropdowns with the fetched voices
             data.voices.forEach(voice => {
                 const option1 = document.createElement('option');
                 option1.value = voice.voice_id;
@@ -36,8 +32,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
     await loadVoices();
-    // --------------------------------------------------
-
 
     // --- TEXT-TO-SPEECH FUNCTIONALITY ---
     const textInput = document.getElementById('text-input');
@@ -46,7 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     generateButton.addEventListener('click', async () => {
         const text = textInput.value.trim();
-        const voice_id = ttsVoiceSelect.value; // Get selected voice
+        const voice_id = ttsVoiceSelect.value;
         if (!text) return alert('Please enter some text.');
         if (!voice_id) return alert('Please select a voice.');
         
@@ -59,7 +53,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             const response = await fetch('/generate-speech', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                // Send text AND voice_id to the backend
                 body: JSON.stringify({ text: text, voice_id: voice_id }),
             });
             if (!response.ok) throw new Error('Network response was not ok.');
@@ -82,7 +75,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // --- ECHO BOT & VISUALIZER ---
+    // --- FULL CONVERSATIONAL PIPELINE ---
     const startButton = document.getElementById('start-recording');
     const stopButton = document.getElementById('stop-recording');
     const echoAudioContainer = document.getElementById('echo-audio-container');
@@ -101,7 +94,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             mediaRecorder.addEventListener('dataavailable', event => audioChunks.push(event.data));
             mediaRecorder.addEventListener('stop', () => {
                 const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                transcribeAndEcho(audioBlob);
+                // --- DAY 9: Call the new full pipeline function ---
+                startFullConversation(audioBlob);
                 audioChunks = [];
             });
 
@@ -109,6 +103,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             startButton.disabled = true;
             stopButton.disabled = false;
             startButton.textContent = "Recording...";
+            transcriptionContainer.textContent = "Your transcribed text will appear here...";
+            echoAudioContainer.innerHTML = "";
 
         } catch (error) {
             console.error("Error accessing microphone:", error);
@@ -126,24 +122,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    async function transcribeAndEcho(audioBlob) {
-        const voice_id = echoVoiceSelect.value; // Get selected voice
-        if (!voice_id) return alert('Please select a voice for the echo.');
+    // --- NEW FUNCTION FOR DAY 9 ---
+    async function startFullConversation(audioBlob) {
+        const voice_id = echoVoiceSelect.value;
+        if (!voice_id) return alert('Please select a voice for the agent.');
 
         const formData = new FormData();
         formData.append("audio_file", audioBlob, "recording.wav");
         
         try {
-            transcriptionContainer.textContent = "Transcribing & generating echo...";
-            // Send the voice_id as a query parameter
-            const response = await fetch(`/tts/echo?voice_id=${voice_id}`, { method: 'POST', body: formData });
+            transcriptionContainer.textContent = "Listening... Thinking... Speaking...";
+            
+            // Call the new /llm/query endpoint
+            const response = await fetch(`/llm/query?voice_id=${voice_id}`, { method: 'POST', body: formData });
+            
             if (!response.ok) throw new Error(`Server responded with ${response.status}`);
+            
             const result = await response.json();
+            
             if (result.error) throw new Error(result.error);
-            transcriptionContainer.textContent = result.transcription || "No transcription available.";
-            if (result.audio_url) {
+
+            // Update the UI with the user's transcription
+            transcriptionContainer.textContent = `You said: "${result.user_transcription}"`;
+
+            // Play the new AI audio response
+            if (result.ai_response_audio_url) {
                 const audioPlayer = document.createElement('audio');
-                audioPlayer.src = result.audio_url;
+                audioPlayer.src = result.ai_response_audio_url;
                 audioPlayer.controls = true;
                 audioPlayer.autoplay = true;
                 audioPlayer.classList.add('w-full', 'mt-4');
@@ -151,8 +156,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 echoAudioContainer.appendChild(audioPlayer);
             }
         } catch (error) {
-            console.error("Echo failed:", error);
-            transcriptionContainer.textContent = `Echo failed: ${error.message}`;
+            console.error("Full pipeline failed:", error);
+            transcriptionContainer.textContent = `Error: ${error.message}`;
         }
     }
 

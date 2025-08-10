@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 import time
 import assemblyai
-import google.generativeai as genai # Import the new Gemini library
+import google.generativeai as genai
 
 # Load your API keys from the .env file
 load_dotenv()
@@ -64,64 +64,72 @@ def generate_speech(request: SpeechRequest):
         print(f"Error during TTS generation: {e}")
         return {"error": "Failed to generate TTS audio."}
 
-
-@app.post("/tts/echo")
-async def tts_echo(audio_file: UploadFile = File(...), voice_id: str = Query(...)):
-    """Receives audio and a voice_id, transcribes it, generates speech, and returns the response."""
+# --- UPDATED ENDPOINT FOR DAY 9 ---
+@app.post("/llm/query")
+async def llm_query(audio_file: UploadFile = File(...), voice_id: str = Query(...)):
+    """
+    The full non-streaming pipeline:
+    1. Transcribes audio to text.
+    2. Sends text to an LLM to get a response.
+    3. Converts the LLM's text response back to audio.
+    """
     try:
-        # 1. Transcribe the user's audio
+        # Step 1: Transcribe the user's audio
+        print("--- Transcribing audio ---")
         assemblyai.settings.api_key = os.getenv("ASSEMBLYAI_API_KEY")
         transcriber = assemblyai.Transcriber()
         transcript = transcriber.transcribe(audio_file.file)
-        if transcript.status == assemblyai.TranscriptStatus.error: return {"error": transcript.error}
-        transcribed_text = transcript.text
-        if not transcribed_text: return {"error": "Could not understand audio."}
+
+        if transcript.status == assemblyai.TranscriptStatus.error:
+            return {"error": transcript.error}
         
-        # 2. Generate new audio from the transcribed text
+        user_text = transcript.text
+        if not user_text:
+            return {"error": "Could not understand audio."}
+        print(f"--- User said: '{user_text}' ---")
+
+        # Step 2: Send the transcribed text to the Gemini LLM
+        print("--- Getting LLM response ---")
+        GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # --- FIX: Added a constraint to the prompt for a shorter response ---
+        prompt = f"You are Aether, a friendly and helpful AI voice assistant. Answer the following user query in a conversational and informative way, but keep your response concise and under 30 words. User query: '{user_text}'"
+        llm_response = model.generate_content(prompt)
+        llm_response_text = llm_response.text
+        print(f"--- AI says: '{llm_response_text}' ---")
+
+        # Step 3: Convert the LLM's text response to speech using the Murf API
+        print(f"--- Generating AI speech with voice {voice_id} ---")
+        
+        max_chars = 2999
+        if len(llm_response_text) > max_chars:
+            llm_response_text = llm_response_text[:max_chars]
+
         TTS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
         headers = {"Accept": "audio/mpeg", "Content-Type": "application/json", "xi-api-key": TTS_API_KEY}
-        payload = {"text": transcribed_text, "model_id": "eleven_multilingual_v2", "voice_settings": { "stability": 0.5, "similarity_boost": 0.5 }}
+        payload = {"text": llm_response_text, "model_id": "eleven_multilingual_v2"}
         response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()
-        audio_filename = "temp_echo.mp3"
+
+        audio_filename = "response.mp3"
         audio_filepath = os.path.join("static", audio_filename)
         with open(audio_filepath, "wb") as f:
             f.write(response.content)
+        
         audio_url = f"/static/{audio_filename}?v={time.time()}"
-        return {"transcription": transcribed_text, "audio_url": audio_url}
-    except Exception as e:
-        print(f"Error during echo process: {e}")
-        return {"error": "Failed to process audio echo."}
 
-# --- ENDPOINT FOR DAY 8 ---
-class LLMQueryRequest(BaseModel):
-    text: str
-
-@app.post("/llm/query")
-def llm_query(request: LLMQueryRequest):
-    """
-    Accepts text, sends it to the Gemini LLM, and returns the response.
-    """
-    try:
-        # Configure the Gemini API with  key
-        GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-        genai.configure(api_key=GEMINI_API_KEY)
-
-        # --- FIX: Use the latest, correct model name ---
-        model = genai.GenerativeModel('gemini-1.5-flash')
-
-        # Send the user's text to the model
-        response = model.generate_content(request.text)
-
-        # Return the AI's response text
-        return {"response": response.text}
+        # Step 4: Return the final audio URL and the transcription
+        return {
+            "user_transcription": user_text,
+            "ai_response_audio_url": audio_url
+        }
 
     except Exception as e:
-        print(f"Error with Gemini API: {e}")
-        return {"error": "Failed to get response from LLM."}
-# ---------------------------------
-
+        print(f"Error during full pipeline: {e}")
+        return {"error": "Failed to process the full request."}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
