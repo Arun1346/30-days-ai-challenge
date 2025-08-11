@@ -4,11 +4,10 @@
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>Aether Voice</title>
-    <script src="/static/script.js?v=1" defer></script>
+    <script src="/static/script.js?v=4" defer></script>
     <link href="https://fonts.googleapis.com" rel="preconnect"/>
     <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
-    <!-- This line loads the Tailwind CSS framework -->
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <style type="text/tailwindcss">
         :root {
@@ -54,7 +53,20 @@
             @apply mt-6 p-4 bg-black/30 rounded-lg min-h-[80px] text-[var(--text-secondary)] italic;
         }
         .voice_visualizer {
-            @apply w-full h-24 bg-black/30 rounded-lg flex items-center justify-center border border-white/10 mb-6;
+            @apply w-full h-24 bg-black/30 rounded-lg items-center justify-center border border-white/10 mb-6;
+            display: none; /* Hidden by default */
+        }
+        .status-indicator {
+            @apply flex items-center justify-center gap-2 text-lg text-[var(--text-secondary)] mt-4 transition-opacity duration-300;
+        }
+        .status-dot {
+            @apply w-3 h-3 rounded-full;
+        }
+        .status-dot-red {
+            @apply bg-red-500 animate-pulse;
+        }
+        .status-dot-gray {
+            @apply bg-gray-500;
         }
         @keyframes subtle-gradient {
             0% { background-position: 0% 50%; }
@@ -78,9 +90,7 @@
                     <div class="flex flex-col space-y-6">
                         <h2 class="typography_h2">Text-to-Speech</h2>
                         <textarea id="text-input" class="input" placeholder="Enter text to convert to speech"></textarea>
-                        <select id="tts-voice-select" class="select">
-                            <option>Loading voices...</option>
-                        </select>
+                        <select id="tts-voice-select" class="select"><option>Loading voices...</option></select>
                         <div class="text-center">
                             <button id="generate-button" class="button_primary">Generate Audio</button>
                         </div>
@@ -88,23 +98,22 @@
                     </div>
                     <!-- Voice Interaction Section -->
                     <div class="flex flex-col space-y-6">
-                        <!-- FIXED: Changed the heading to match the challenge task -->
                         <h2 class="typography_h2">Echo Bot</h2>
                         <div class="voice_visualizer">
                             <canvas id="visualizer" class="w-full h-full"></canvas>
                         </div>
-                        <select id="echo-voice-select" class="select">
-                            <option>Loading voices...</option>
-                        </select>
+                        <select id="echo-voice-select" class="select"><option>Loading voices...</option></select>
                         <div class="flex items-center justify-center gap-4">
                             <button id="start-recording" class="button_primary w-full">Start Recording</button>
                             <button id="stop-recording" class="button_secondary w-full" disabled>Stop Recording</button>
                         </div>
+                        <div id="agent-status" class="status-indicator">
+                            <div class="status-dot status-dot-gray"></div>
+                            <span>Ready</span>
+                        </div>
                         <div>
                             <p class="text-[var(--text-primary)] mb-2 font-semibold">Transcribed Text:</p>
-                            <div id="transcription-container" class="transcribed_text">
-                                Your transcribed text will appear here...
-                            </div>
+                            <div id="transcription-container" class="transcribed_text">Your transcribed text will appear here...</div>
                         </div>
                         <div id="echo-audio-container"></div>
                     </div>

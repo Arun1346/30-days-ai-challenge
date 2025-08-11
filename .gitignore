@@ -1,4 +1,12 @@
+# Python
 __pycache__/
-.env
-tempCodeRunnerFile.py
 *.pyc
+
+# Environment variables
+.env
+
+# VS Code
+.vscode/
+tempCodeRunnerFile.py
+# Temporary audio files
+/static/*.mp3

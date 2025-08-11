@@ -9,14 +9,19 @@ from pydantic import BaseModel
 import time
 import assemblyai
 import google.generativeai as genai
+import uuid
 
 # Load your API keys from the .env file
 load_dotenv()
 
 app = FastAPI()
 
+# This makes the 'static' folder available to the browser
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# --- In-memory datastore for chat history ---
+chat_histories = {}
+# -------------------------------------------------
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
@@ -27,7 +32,6 @@ def read_root():
 # --- Endpoint to get available voices ---
 @app.get("/voices")
 def get_voices():
-    """Fetches the list of available voices from the TTS API."""
     try:
         TTS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
         url = "https://api.elevenlabs.io/v1/voices"
@@ -36,7 +40,6 @@ def get_voices():
         response.raise_for_status()
         return response.json()
     except Exception as e:
-        print(f"Error fetching voices: {e}")
         return {"error": "Could not fetch voices."}
 
 # This defines the structure for the text we receive for the TTS section
@@ -46,36 +49,29 @@ class SpeechRequest(BaseModel):
 
 @app.post("/generate-speech")
 def generate_speech(request: SpeechRequest):
-    """Receives text and a voice_id from the UI and generates speech."""
     try:
         TTS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{request.voice_id}"
         headers = {"Accept": "audio/mpeg", "Content-Type": "application/json", "xi-api-key": TTS_API_KEY}
-        payload = {"text": request.text, "model_id": "eleven_multilingual_v2", "voice_settings": { "stability": 0.5, "similarity_boost": 0.5 }}
+        payload = {"text": request.text, "model_id": "eleven_multilingual_v2"}
         response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()
         audio_filename = "temp_tts.mp3"
         audio_filepath = os.path.join("static", audio_filename)
-        with open(audio_filepath, "wb") as f:
-            f.write(response.content)
+        with open(audio_filepath, "wb") as f: f.write(response.content)
         audio_url = f"/static/{audio_filename}?v={time.time()}"
         return {"audio_url": audio_url}
     except Exception as e:
-        print(f"Error during TTS generation: {e}")
         return {"error": "Failed to generate TTS audio."}
 
-# --- UPDATED ENDPOINT FOR DAY 9 ---
-@app.post("/llm/query")
-async def llm_query(audio_file: UploadFile = File(...), voice_id: str = Query(...)):
+# --- Main Conversational Endpoint for Day 10 ---
+@app.post("/agent/chat/{session_id}")
+async def agent_chat(session_id: str, audio_file: UploadFile = File(...), voice_id: str = Query(...)):
     """
-    The full non-streaming pipeline:
-    1. Transcribes audio to text.
-    2. Sends text to an LLM to get a response.
-    3. Converts the LLM's text response back to audio.
+    The main conversational endpoint with chat history.
     """
     try:
-        # Step 1: Transcribe the user's audio
-        print("--- Transcribing audio ---")
+        # 1. Transcribe the user's audio
         assemblyai.settings.api_key = os.getenv("ASSEMBLYAI_API_KEY")
         transcriber = assemblyai.Transcriber()
         transcript = transcriber.transcribe(audio_file.file)
@@ -88,25 +84,27 @@ async def llm_query(audio_file: UploadFile = File(...), voice_id: str = Query(..
             return {"error": "Could not understand audio."}
         print(f"--- User said: '{user_text}' ---")
 
-        # Step 2: Send the transcribed text to the Gemini LLM
+        # 2. Manage Chat History
+        if session_id not in chat_histories:
+            chat_histories[session_id] = []
+        
+        # 3. Get LLM response with history
         print("--- Getting LLM response ---")
         GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # --- FIX: Added a constraint to the prompt for a shorter response ---
-        prompt = f"You are Aether, a friendly and helpful AI voice assistant. Answer the following user query in a conversational and informative way, but keep your response concise and under 30 words. User query: '{user_text}'"
-        llm_response = model.generate_content(prompt)
+        # The Gemini SDK's `start_chat` method automatically handles history
+        chat = model.start_chat(history=chat_histories[session_id])
+        llm_response = chat.send_message(user_text)
         llm_response_text = llm_response.text
         print(f"--- AI says: '{llm_response_text}' ---")
-
-        # Step 3: Convert the LLM's text response to speech using the Murf API
-        print(f"--- Generating AI speech with voice {voice_id} ---")
         
-        max_chars = 2999
-        if len(llm_response_text) > max_chars:
-            llm_response_text = llm_response_text[:max_chars]
+        # Update our history with the latest messages
+        chat_histories[session_id] = chat.history
 
+        # 4. Convert the LLM's text response to speech
+        print(f"--- Generating AI speech with voice {voice_id} ---")
         TTS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
         headers = {"Accept": "audio/mpeg", "Content-Type": "application/json", "xi-api-key": TTS_API_KEY}
@@ -114,22 +112,19 @@ async def llm_query(audio_file: UploadFile = File(...), voice_id: str = Query(..
         response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()
 
-        audio_filename = "response.mp3"
+        audio_filename = f"response_{session_id}.mp3"
         audio_filepath = os.path.join("static", audio_filename)
-        with open(audio_filepath, "wb") as f:
-            f.write(response.content)
-        
+        with open(audio_filepath, "wb") as f: f.write(response.content)
         audio_url = f"/static/{audio_filename}?v={time.time()}"
 
-        # Step 4: Return the final audio URL and the transcription
         return {
             "user_transcription": user_text,
             "ai_response_audio_url": audio_url
         }
 
     except Exception as e:
-        print(f"Error during full pipeline: {e}")
-        return {"error": "Failed to process the full request."}
+        print(f"Error during agent chat: {e}")
+        return {"error": "Failed to process the request."}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
