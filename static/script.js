@@ -5,8 +5,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     let sessionId = new URLSearchParams(window.location.search).get('session_id');
     if (!sessionId) {
         sessionId = Date.now().toString();
-        window.location.search = `?session_id=${sessionId}`;
-        return;
+        // Use replaceState to avoid reloading the page, which would create a new session
+        window.history.replaceState(null, '', `?session_id=${sessionId}`);
     }
     console.log("Current Session ID:", sessionId);
 
@@ -31,24 +31,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadVoices() {
         try {
             const response = await fetch('/voices');
+            if (!response.ok) throw new Error(`Failed to load voices: ${response.statusText}`);
             const data = await response.json();
-            if (data.error || !data.voices) throw new Error('Could not load voices.');
-            ttsVoiceSelect.innerHTML = '';
-            echoVoiceSelect.innerHTML = '';
-            data.voices.forEach(voice => {
-                const option1 = document.createElement('option');
-                option1.value = voice.voice_id;
-                option1.textContent = `${voice.name} (${voice.labels.gender})`;
-                ttsVoiceSelect.appendChild(option1);
-                const option2 = document.createElement('option');
-                option2.value = voice.voice_id;
-                option2.textContent = `${voice.name} (${voice.labels.gender})`;
-                echoVoiceSelect.appendChild(option2);
-            });
+            if (data.error || !data.voices) throw new Error(data.error || 'Voice data is invalid.');
+            
+            const populateSelect = (selectElement) => {
+                selectElement.innerHTML = '';
+                data.voices.forEach(voice => {
+                    const option = document.createElement('option');
+                    option.value = voice.voice_id;
+                    option.textContent = `${voice.name} (${voice.labels.gender || 'N/A'})`;
+                    selectElement.appendChild(option);
+                });
+            };
+            populateSelect(ttsVoiceSelect);
+            populateSelect(echoVoiceSelect);
+
         } catch (error) {
             console.error("Failed to load voices:", error);
-            ttsVoiceSelect.innerHTML = '<option>Failed to load voices</option>';
-            echoVoiceSelect.innerHTML = '<option>Failed to load voices</option>';
+            ttsVoiceSelect.innerHTML = '<option>Failed to load</option>';
+            echoVoiceSelect.innerHTML = '<option>Failed to load</option>';
         }
     }
     await loadVoices();
@@ -69,9 +71,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: text, voice_id: voice_id }),
             });
-            if (!response.ok) throw new Error('Network response was not ok.');
             const data = await response.json();
-            if (data.error) throw new Error(data.error);
+            if (!response.ok) throw new Error(data.error || 'Network response was not ok.');
+            
             if (data.audio_url) {
                 const audioPlayer = document.createElement('audio');
                 audioPlayer.src = data.audio_url;
@@ -123,6 +125,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // --- CORRECTED CONVERSATIONAL FUNCTION FOR DAY 11 ---
     async function startConversationTurn(audioBlob) {
         const voice_id = echoVoiceSelect.value;
         if (!voice_id) return alert('Please select a voice for the agent.');
@@ -131,35 +134,57 @@ document.addEventListener('DOMContentLoaded', async () => {
         formData.append("audio_file", audioBlob, "recording.wav");
         
         try {
-            transcriptionContainer.textContent = "Listening... Thinking... Speaking...";
+            setAgentStatus('Thinking...', false);
+            transcriptionContainer.textContent = "Sending your voice to the AI...";
+            
             const response = await fetch(`/agent/chat/${sessionId}?voice_id=${voice_id}`, { method: 'POST', body: formData });
-            if (!response.ok) throw new Error(`Server responded with ${response.status}`);
             const result = await response.json();
-            if (result.error) throw new Error(result.error);
 
-            transcriptionContainer.textContent = `You said: "${result.user_transcription}"`;
+            // Display transcription regardless of success or failure
+            if (result.user_transcription) {
+                transcriptionContainer.textContent = `You said: "${result.user_transcription}"`;
+            }
 
-            if (result.ai_response_audio_url) {
-                const audioPlayer = document.createElement('audio');
-                audioPlayer.src = result.ai_response_audio_url;
-                audioPlayer.controls = true;
-                audioPlayer.autoplay = true;
-                audioPlayer.classList.add('w-full', 'mt-4');
-                
+            // The audio player will handle either the success audio or the error audio
+            const audioPlayer = document.createElement('audio');
+            audioPlayer.src = result.ai_response_audio_url;
+            audioPlayer.controls = true;
+            audioPlayer.autoplay = true;
+            audioPlayer.classList.add('w-full', 'mt-4');
+            echoAudioContainer.innerHTML = '';
+            echoAudioContainer.appendChild(audioPlayer);
+
+            // If the server response was not OK, it's an error.
+            if (!response.ok) {
+                console.error("Server returned an error:", result.error);
+                transcriptionContainer.textContent += ` | Error: ${result.error}`;
+                setAgentStatus('Error. Ready.', false);
+                // On error, DO NOT auto-record again. Just reset the state.
                 audioPlayer.addEventListener('ended', () => {
-                    setAgentStatus('Listening...', true);
+                    setAgentStatus('Error. Ready.', false);
+                });
+            } else if (result.ai_response_audio_url) {
+                // Handle success case
+                setAgentStatus('Speaking...', false);
+                // Auto-record only on success
+                audioPlayer.addEventListener('ended', () => {
+                    console.log("AI finished speaking. Clicking start button for next turn.");
                     startButton.click(); 
                 });
-                
-                echoAudioContainer.innerHTML = '';
-                echoAudioContainer.appendChild(audioPlayer);
-                setAgentStatus('Speaking...', false);
+            } else {
+                // This handles the case where the user was silent.
+                console.log("User was silent, resetting to Ready state.");
+                setAgentStatus('Ready', false);
             }
+
         } catch (error) {
-            transcriptionContainer.textContent = `Error: ${error.message}`;
-            setAgentStatus('Error', false);
+            // This catch block now only handles network failures (e.g., server is down)
+            console.error("A network error occurred:", error);
+            transcriptionContainer.textContent = `A network error occurred: ${error.message}`;
+            setAgentStatus('Error. Ready.', false);
         }
     }
+
 
     // --- Visualizer Functions ---
     function startVisualizer(stream) {
@@ -175,8 +200,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function stopVisualizer() {
-        cancelAnimationFrame(animationFrameId);
-        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        if (canvasCtx) canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
         visualizerContainer.style.display = 'none';
     }
 
