@@ -158,8 +158,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (result.ai_response_audio_url) {
                 audioPlayer.src = result.ai_response_audio_url;
                 audioContainer.innerHTML = '';
-                // Don't add the audio player to the DOM if you want it hidden
-                // audioContainer.appendChild(audioPlayer); 
+                // audioContainer.appendChild(audioPlayer); // Don't show controls
                 audioPlayer.play();
                 setAgentStatus('Speaking...', 'green');
 
@@ -167,7 +166,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     setAgentStatus('Ready', 'gray');
                 });
             } else if (!response.ok) {
-                 // Error already handled, do nothing
+                 // Error already handled
             } else {
                 setAgentStatus('Ready', 'gray');
             }

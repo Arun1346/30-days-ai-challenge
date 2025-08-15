@@ -1,23 +1,25 @@
+# app.py
 import os
-import requests
-from fastapi import FastAPI, File, UploadFile, Query
+from fastapi import FastAPI, File, UploadFile, Query, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-import uvicorn
 from dotenv import load_dotenv
-import time
-import assemblyai
-import google.generativeai as genai
+import logging
 
-# Load your API keys from the .env file
+# Import our new modules
+from schemas import AgentChatResponse, ErrorResponse
+from services import stt, llm, tts
+
+# Load environment variables
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# In-memory datastore for chat history
-chat_histories = {}
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
@@ -25,95 +27,57 @@ def read_root():
     with open("templates/index.html", "r") as f:
         return f.read()
 
-# Endpoint to get available voices
 @app.get("/voices")
-def get_voices():
+def get_voices_endpoint():
+    """Endpoint to get available voices and format them for the frontend."""
     try:
-        TTS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-        if not TTS_API_KEY:
-            raise ValueError("ElevenLabs API key not found.")
-        url = "https://api.elevenlabs.io/v1/voices"
-        headers = {"xi-api-key": TTS_API_KEY}
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json()
+        murf_voices = tts.get_voices()
+        
+        formatted_voices = []
+        for voice in murf_voices:
+            voice_name = voice.get("name") or voice.get("voiceId")
+            formatted_voices.append({
+                "voice_id": voice.get("voiceId"),
+                "name": voice_name,
+                "labels": { "gender": voice.get("gender") }
+            })
+            
+        return {"voices": formatted_voices}
     except Exception as e:
-        print(f"Error fetching voices: {e}")
-        return JSONResponse(status_code=500, content={"error": "Could not fetch voices."})
+        logger.error(f"Error fetching and formatting voices: {e}")
+        raise HTTPException(status_code=500, detail="Could not fetch voices.")
 
-# --- Main Conversational Endpoint ---
 @app.post("/agent/chat/{session_id}")
 async def agent_chat(session_id: str, audio_file: UploadFile = File(...), voice_id: str = Query(...)):
-    """
-    The main conversational endpoint with robust error handling.
-    """
-    fallback_audio_url = f"/static/error.mp3?v={time.time()}"
-    user_text = "I heard you, but an error occurred." # Default text
+    """ Main conversational endpoint, refactored to use services. """
+    logger.info(f"Received chat request for session: {session_id}")
+    fallback_audio_url = f"/static/error.mp3"
+    user_text = "I heard you, but an error occurred."
 
     try:
-        # Step 1: Transcribe the user's audio (STT)
-        print("--- 1. Transcribing User Audio ---")
-        assemblyai.settings.api_key = os.getenv("ASSEMBLYAI_API_KEY")
-        if not assemblyai.settings.api_key:
-            raise ValueError("AssemblyAI API key not found.")
-        
-        transcriber = assemblyai.Transcriber()
-        transcript = transcriber.transcribe(audio_file.file)
-
-        if transcript.status == assemblyai.TranscriptStatus.error:
-            raise Exception(f"STT Error: {transcript.error}")
-        
-        user_text = transcript.text
+        # 1. Speech-to-Text
+        user_text = stt.transcribe_audio(audio_file)
         if not user_text:
+            logger.info("User was silent.")
             return JSONResponse(status_code=200, content={"user_transcription": "[silence]", "ai_response_audio_url": None})
-        print(f"--- User said: '{user_text}' ---")
 
-        # Step 2: Get LLM response
-        print("--- 2. Getting LLM Response ---")
-        GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-        if not GEMINI_API_KEY:
-            raise ValueError("Gemini API key not found.")
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        if session_id not in chat_histories:
-            chat_histories[session_id] = []
-        
-        chat = model.start_chat(history=chat_histories[session_id])
-        llm_response = chat.send_message(user_text)
-        llm_response_text = llm_response.text
-        print(f"--- AI says: '{llm_response_text}' ---")
-        chat_histories[session_id] = chat.history
+        # 2. Language Model
+        llm_response_text = llm.get_llm_response(session_id, user_text)
 
-        # Step 3: Convert the LLM's text response to speech (TTS)
-        print("--- 3. Generating AI Speech ---")
-        TTS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-        if not TTS_API_KEY:
-            raise ValueError("ElevenLabs API key not found.")
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-        headers = {"Accept": "audio/mpeg", "Content-Type": "application/json", "xi-api-key": TTS_API_KEY}
-        payload = {"text": llm_response_text, "model_id": "eleven_multilingual_v2"}
-        response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()
+        # 3. Text-to-Speech
+        audio_url = tts.generate_speech_audio(llm_response_text, voice_id, session_id)
 
-        audio_filename = f"response_{session_id}.mp3"
-        audio_filepath = os.path.join("static", audio_filename)
-        with open(audio_filepath, "wb") as f: f.write(response.content)
-        audio_url = f"/static/{audio_filename}?v={time.time()}"
-
-        return {
-            "user_transcription": user_text,
-            "ai_response_text": llm_response_text,
-            "ai_response_audio_url": audio_url
-        }
+        return AgentChatResponse(
+            user_transcription=user_text,
+            ai_response_text=llm_response_text,
+            ai_response_audio_url=audio_url
+        )
 
     except Exception as e:
-        print(f"--- ERROR IN AGENT CHAT PIPELINE: {e} ---")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "user_transcription": user_text,
-                "ai_response_audio_url": fallback_audio_url,
-                "error": str(e)
-            }
+        logger.error(f"Error in agent chat pipeline for session {session_id}: {e}", exc_info=True)
+        error_response = ErrorResponse(
+            user_transcription=user_text,
+            ai_response_audio_url=fallback_audio_url,
+            error=str(e)
         )
+        return JSONResponse(status_code=500, content=error_response.dict())
