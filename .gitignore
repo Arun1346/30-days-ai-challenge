@@ -10,3 +10,5 @@ __pycache__/
 tempCodeRunnerFile.py
 # Temporary audio files
 /static/*.mp3
+static/streamed_audio_*.webm
+static/response_*.mp3
