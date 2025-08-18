@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aether Voice</title>
+    <title>Aether Voice - Day 17</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -12,7 +12,7 @@
             background-color: #111827; /* Dark Gray */
         }
         .main-container {
-            max-width: 400px;
+            max-width: 500px;
             width: 100%;
         }
         #record-button {
@@ -43,6 +43,20 @@
         .status-dot-red { background-color: #ef4444; }
         .status-dot-blue { background-color: #3b82f6; }
         .status-dot-green { background-color: #22c55e; }
+        
+        /* New styles for transcription display */
+        .transcription-card {
+            transition: all 0.3s ease-in-out;
+            border-left: 3px solid transparent;
+        }
+        .transcription-partial {
+            border-left-color: #fbbf24; /* Yellow */
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(251, 191, 36, 0.05));
+        }
+        .transcription-final {
+            border-left-color: #22c55e; /* Green */
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05));
+        }
     </style>
 </head>
 <body class="text-white flex items-center justify-center min-h-screen p-4">
@@ -50,7 +64,7 @@
     <div class="main-container bg-gray-900 p-6 md:p-8 rounded-2xl shadow-2xl border border-gray-700">
         
         <h1 class="text-3xl font-bold text-center mb-2">Aether Voice</h1>
-        <p class="text-center text-gray-400 mb-6">Your AI Conversational Partner</p>
+        <p class="text-center text-gray-400 mb-6">Real-time Speech Transcription with AssemblyAI</p>
 
         <!-- Voice Selection -->
         <div class="mb-6">
@@ -61,7 +75,7 @@
         </div>
 
         <!-- Combined Record Button -->
-        <div class="flex justify-center mb-4">
+        <div class="flex justify-center mb-6">
             <button id="record-button" class="bg-purple-600 hover:bg-purple-700 text-white rounded-full w-24 h-24 flex items-center justify-center shadow-lg focus:outline-none focus:ring-4 focus:ring-purple-500/50">
                 <svg id="record-icon" class="w-10 h-10" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>
@@ -73,7 +87,7 @@
         </div>
 
         <!-- Status & Visualizer -->
-        <div class="text-center mb-4 h-12 flex flex-col justify-center items-center">
+        <div class="text-center mb-6 h-12 flex flex-col justify-center items-center">
              <div id="agent-status" class="flex items-center justify-center text-gray-400 mb-2">
                 <!-- Status will be injected by JS -->
             </div>
@@ -82,9 +96,35 @@
             </div>
         </div>
 
-        <!-- Conversation Log -->
-        <div id="conversation-container" class="space-y-4 mt-6">
-            <div id="user-transcription-container" class="text-left text-gray-300 p-3 bg-gray-800 rounded-lg hidden"></div>
+        <!-- Real-time Transcription Display -->
+        <div class="mb-6">
+            <h3 class="text-lg font-semibold text-gray-300 mb-3 flex items-center">
+                <svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>
+                </svg>
+                Live Transcription
+            </h3>
+            
+            <!-- Transcription Container -->
+            <div id="user-transcription-container" class="transcription-card bg-gray-800 rounded-lg p-4 hidden min-h-[80px] flex items-center">
+                <div class="text-gray-400">Start speaking to see real-time transcription...</div>
+            </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-600">
+            <h4 class="text-sm font-semibold text-gray-300 mb-2">Instructions:</h4>
+            <ul class="text-xs text-gray-400 space-y-1">
+                <li>• Click the record button to start streaming audio</li>
+                <li>• Speak clearly into your microphone</li>
+                <li>• Watch real-time transcription appear above</li>
+                <li>• Yellow indicator = partial transcription</li>
+                <li>• Green indicator = final transcription</li>
+            </ul>
+        </div>
+
+        <!-- Legacy Conversation Log (hidden for now) -->
+        <div id="conversation-container" class="space-y-4 mt-6 hidden">
             <div id="ai-response-container" class="text-left text-purple-300 p-3 bg-gray-800 rounded-lg hidden"></div>
             <div id="audio-container" class="w-full"></div>
         </div>
