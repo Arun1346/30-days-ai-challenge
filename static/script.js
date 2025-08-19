@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log("DOM loaded. Aether Voice Universal Streaming script running.");
+    console.log("🎙️ Day 18 - Enhanced Turn Detection script loaded");
 
     // --- WebSocket Connection ---
     let ws;
@@ -11,8 +11,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
 
         ws.onopen = () => {
-            console.log("✅ WebSocket connection established.");
-            setAgentStatus('Ready to Stream', 'green');
+            console.log("✅ WebSocket connection established for Turn Detection");
+            setAgentStatus('Turn Detection Ready', 'green');
             reconnectAttempts = 0;
         };
 
@@ -20,21 +20,31 @@ document.addEventListener('DOMContentLoaded', async () => {
             try {
                 const data = JSON.parse(event.data);
                 console.log("📨 Received:", data);
-                
+
                 if (data.type === 'connection_established') {
-                    console.log("✅ AssemblyAI Universal Streaming connected");
-                    setAgentStatus('Universal Streaming Ready', 'green');
+                    console.log("🚀 Enhanced Turn Detection connected");
+                    setAgentStatus('Turn Detection Active', 'green');
+                    displaySystemMessage(data.message);
                 } else if (data.type === 'partial_transcript') {
                     displayPartialTranscription(data.text);
-                } else if (data.type === 'final_transcript') {
-                    displayFinalTranscription(data.text);
+                    setAgentStatus('🎤 User Speaking...', 'blue');
+                } else if (data.type === 'final_transcript' || data.type === 'turn_completed' || data.type === 'turn_updated') {
+                    // UPDATED: Handle both new turns and punctuation updates
+                    displayFinalTranscription(data.text || data.final_transcript, data.turn_number);
+                    updateOrAddTurnInHistory(data);
+                    
+                    if (data.type === 'turn_completed') {
+                        handleTurnCompleted(data);
+                    }
                 } else if (data.type === 'error') {
                     console.error("❌ Server error:", data.message);
                     setAgentStatus(`Error: ${data.message}`, 'red');
                 } else if (data.type === 'session_begin') {
-                    console.log("🚀 Session began:", data.session_id);
+                    console.log("🎯 Turn Detection session began:", data.session_id);
+                    displaySystemMessage("Turn detection active - speak naturally and pause to complete turns");
                 } else if (data.type === 'session_terminated') {
-                    console.log("🔒 Session terminated");
+                    console.log("🔒 Turn Detection session terminated");
+                    displaySystemMessage(`Session ended - ${data.total_audio_duration} seconds processed`);
                 }
             } catch (e) {
                 console.log("Server message:", event.data);
@@ -44,7 +54,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         ws.onclose = () => {
             console.log("WebSocket connection closed.");
             setAgentStatus('Disconnected', 'gray');
-            
             if (reconnectAttempts < maxReconnectAttempts) {
                 reconnectAttempts++;
                 console.log(`Reconnecting... (${reconnectAttempts}/${maxReconnectAttempts})`);
@@ -66,6 +75,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let isRecording = false;
     let audioContext;
     let processor;
+    let turnCount = 0;
 
     // --- Get DOM elements ---
     const voiceSelect = document.getElementById('voice-select');
@@ -74,13 +84,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const stopIcon = document.getElementById('stop-icon');
     const agentStatus = document.getElementById('agent-status');
     const userTranscriptionContainer = document.getElementById('user-transcription-container');
+    const turnHistoryContainer = document.getElementById('turn-history-container');
+    const currentTurnContainer = document.getElementById('current-turn-container');
+    const systemMessagesContainer = document.getElementById('system-messages');
 
     // --- Load Voices ---
     async function loadVoices() {
         try {
             const response = await fetch('/voices');
             if (!response.ok) throw new Error(`Failed to load voices: ${response.statusText}`);
-            
             const data = await response.json();
             if (data.error || !data.voices) throw new Error(data.error || 'Voice data is invalid.');
 
@@ -93,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         } catch (error) {
             console.error("Failed to load voices:", error);
-            voiceSelect.innerHTML = '<option value="">Error loading voices</option>';
+            voiceSelect.innerHTML = '';
         }
     }
 
@@ -135,16 +147,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             isRecording = true;
             updateButtonUI(true);
-            setAgentStatus('🎙️ Recording & Streaming...', 'red');
-            clearTranscriptions();
+            setAgentStatus('🎙️ Recording & Detecting Turns...', 'red');
+            clearCurrentTurn();
+            turnCount = 0;
 
-            audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                sampleRate: 16000
-            });
-            
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
             const source = audioContext.createMediaStreamSource(stream);
             processor = audioContext.createScriptProcessor(4096, 1, 1);
-            
+
             processor.onaudioprocess = (event) => {
                 if (isRecording && ws && ws.readyState === WebSocket.OPEN) {
                     const inputData = event.inputBuffer.getChannelData(0);
@@ -170,75 +180,152 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (isRecording) {
             isRecording = false;
             updateButtonUI(false);
-            setAgentStatus('Processing...', 'blue');
+            setAgentStatus('Processing final turn...', 'blue');
 
             if (processor) {
                 processor.disconnect();
                 processor = null;
             }
-            
             if (audioContext) {
                 audioContext.close();
                 audioContext = null;
             }
-
             if (window.currentStream) {
                 window.currentStream.getTracks().forEach(track => track.stop());
                 window.currentStream = null;
             }
 
             setTimeout(() => {
-                setAgentStatus('Ready to Stream', 'green');
-            }, 2000);
+                setAgentStatus('Turn Detection Ready', 'green');
+            }, 3000);
         }
     }
 
-    // --- UI Helper Functions ---
+    // --- DAY 18: ENHANCED UI FUNCTIONS FOR TURN DETECTION ---
+    
+    // NEW FUNCTION: Update or add turn in history with punctuated text
+    function updateOrAddTurnInHistory(data) {
+        if (!turnHistoryContainer) return;
+        
+        // Look for existing turn element
+        let existingTurnElement = turnHistoryContainer.querySelector(`[data-turn-number="${data.turn_number}"]`);
+        
+        if (existingTurnElement) {
+            // UPDATE existing turn with punctuated text
+            const transcriptElement = existingTurnElement.querySelector('.transcript-text');
+            if (transcriptElement) {
+                transcriptElement.textContent = `"${data.text || data.final_transcript}"`;
+            }
+            console.log(`✏️ Updated turn ${data.turn_number} with punctuation`);
+        } else {
+            // ADD new turn element
+            const turnElement = document.createElement('div');
+            turnElement.className = 'turn-history-item bg-green-900/30 border border-green-600 rounded-lg p-4 mb-3';
+            turnElement.setAttribute('data-turn-number', data.turn_number);
+            turnElement.innerHTML = `
+                <div class="text-sm text-green-400 font-semibold">Turn ${data.turn_number}</div>
+                <div class="text-white transcript-text">"${data.text || data.final_transcript}"</div>
+                ${data.audio_duration ? `<div class="text-xs text-green-300 mt-1">Duration: ${data.audio_duration}s</div>` : ''}
+            `;
+            
+            turnHistoryContainer.appendChild(turnElement);
+            turnHistoryContainer.scrollTop = turnHistoryContainer.scrollHeight;
+            console.log(`➕ Added new turn ${data.turn_number}`);
+        }
+    }
+
+    function handleTurnCompleted(data) {
+        console.log("🎯 TURN COMPLETED:", data);
+        
+        // Update status to show turn completion
+        setAgentStatus(`🔇 Turn ${data.turn_number} Completed - User Stopped Speaking`, 'green');
+        
+        // Clear current turn display
+        setTimeout(() => {
+            clearCurrentTurn();
+            setAgentStatus('🎤 Ready for next turn...', 'gray');
+        }, 2000);
+        
+        // Show turn completion notification
+        showTurnCompletionNotification(data);
+    }
+
+    // UPDATED: Modified to use new logic
+    function addTurnToHistory(turnData) {
+        updateOrAddTurnInHistory(turnData);
+    }
+
+    function showTurnCompletionNotification(data) {
+        const notification = document.createElement('div');
+        notification.className = 'turn-notification fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+        notification.innerHTML = `
+            <div class="font-semibold">Turn ${data.turn_number} Completed!</div>
+            <div class="text-sm">"${data.final_transcript}"</div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Remove notification after 3 seconds
+        setTimeout(() => {
+            if (notification && notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 3000);
+    }
+
+    // --- Helper Functions ---
     function updateButtonUI(recording) {
         if (recording) {
-            recordIcon.classList.add('hidden');
-            stopIcon.classList.remove('hidden');
-            recordButton.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-            recordButton.classList.add('bg-red-600', 'hover:bg-red-700');
+            recordButton.classList.add('recording');
+            recordIcon.style.display = 'none';
+            stopIcon.style.display = 'inline-block';
         } else {
-            recordIcon.classList.remove('hidden');
-            stopIcon.classList.add('hidden');
-            recordButton.classList.remove('bg-red-600', 'hover:bg-red-700');
-            recordButton.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            recordButton.classList.remove('recording');
+            recordIcon.style.display = 'inline-block';
+            stopIcon.style.display = 'none';
         }
     }
 
     function setAgentStatus(status, color) {
-        agentStatus.textContent = status;
-        agentStatus.className = `text-sm font-medium text-${color}-400`;
-    }
-
-    function clearTranscriptions() {
-        userTranscriptionContainer.innerHTML = '';
-        userTranscriptionContainer.classList.add('hidden');
+        if (agentStatus) {
+            agentStatus.textContent = status;
+            agentStatus.className = `text-${color}-400`;
+        }
     }
 
     function displayPartialTranscription(text) {
-        if (!text.trim()) return;
-        
-        userTranscriptionContainer.innerHTML = `
-            <div class="p-4 bg-gray-800 rounded-lg border border-gray-600">
-                <p class="text-sm text-gray-400 mb-1">You're saying (partial):</p>
-                <p class="text-white italic">${text}</p>
-            </div>
-        `;
-        userTranscriptionContainer.classList.remove('hidden');
+        if (currentTurnContainer) {
+            currentTurnContainer.innerHTML = `
+                <div class="text-blue-400 text-sm">Speaking...</div>
+                <div class="text-white">"${text}"</div>
+            `;
+        }
     }
 
-    function displayFinalTranscription(text) {
-        if (!text.trim()) return;
-        
-        userTranscriptionContainer.innerHTML = `
-            <div class="p-4 bg-blue-900 rounded-lg border border-blue-600">
-                <p class="text-sm text-blue-300 mb-1">✅ You said:</p>
-                <p class="text-white font-medium">${text}</p>
-            </div>
-        `;
-        userTranscriptionContainer.classList.remove('hidden');
+    function displayFinalTranscription(text, turnNumber) {
+        if (currentTurnContainer) {
+            currentTurnContainer.innerHTML = `
+                <div class="text-green-400 text-sm">Turn ${turnNumber} Completed</div>
+                <div class="text-white">"${text}"</div>
+            `;
+        }
+    }
+
+    function clearCurrentTurn() {
+        if (currentTurnContainer) {
+            currentTurnContainer.innerHTML = `
+                <div class="text-gray-400">Start speaking to see real-time turn detection</div>
+            `;
+        }
+    }
+
+    function displaySystemMessage(message) {
+        if (systemMessagesContainer) {
+            const messageElement = document.createElement('div');
+            messageElement.className = 'text-blue-300 text-sm mb-2';
+            messageElement.textContent = message;
+            systemMessagesContainer.appendChild(messageElement);
+            systemMessagesContainer.scrollTop = systemMessagesContainer.scrollHeight;
+        }
     }
 });

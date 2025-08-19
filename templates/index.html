@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aether Voice - Day 17</title>
+    <title>Aether Voice - Day 18 Turn Detection</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -12,7 +12,7 @@
             background-color: #111827; /* Dark Gray */
         }
         .main-container {
-            max-width: 500px;
+            max-width: 600px;
             width: 100%;
         }
         #record-button {
@@ -27,11 +27,6 @@
             70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
             100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
-        .voice_visualizer {
-            display: none; /* Hidden by default */
-            height: 50px;
-            width: 100%;
-        }
         .status-dot {
             height: 10px;
             width: 10px;
@@ -44,18 +39,44 @@
         .status-dot-blue { background-color: #3b82f6; }
         .status-dot-green { background-color: #22c55e; }
         
-        /* New styles for transcription display */
-        .transcription-card {
-            transition: all 0.3s ease-in-out;
-            border-left: 3px solid transparent;
+        /* Enhanced styles for turn detection */
+        .turn-history-item {
+            animation: slideInFromRight 0.3s ease-out;
         }
-        .transcription-partial {
-            border-left-color: #fbbf24; /* Yellow */
-            background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(251, 191, 36, 0.05));
+        
+        @keyframes slideInFromRight {
+            from {
+                opacity: 0;
+                transform: translateX(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
         }
-        .transcription-final {
-            border-left-color: #22c55e; /* Green */
-            background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05));
+        
+        .turn-notification {
+            animation: slideInFromTop 0.3s ease-out;
+        }
+        
+        @keyframes slideInFromTop {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .system-message {
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
     </style>
 </head>
@@ -64,7 +85,12 @@
     <div class="main-container bg-gray-900 p-6 md:p-8 rounded-2xl shadow-2xl border border-gray-700">
         
         <h1 class="text-3xl font-bold text-center mb-2">Aether Voice</h1>
-        <p class="text-center text-gray-400 mb-6">Real-time Speech Transcription with AssemblyAI</p>
+        <p class="text-center text-gray-400 mb-6">Enhanced Turn Detection</p>
+
+        <!-- System Messages -->
+        <div id="system-messages" class="mb-4 space-y-1">
+            <!-- System messages will be inserted here -->
+        </div>
 
         <!-- Voice Selection -->
         <div class="mb-6">
@@ -80,54 +106,96 @@
                 <svg id="record-icon" class="w-10 h-10" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>
                 </svg>
-                 <svg id="stop-icon" class="w-8 h-8 hidden" viewBox="0 0 24 24" fill="currentColor">
+                <svg id="stop-icon" class="w-8 h-8 hidden" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M6 6h12v12H6z"/>
                 </svg>
             </button>
         </div>
 
-        <!-- Status & Visualizer -->
-        <div class="text-center mb-6 h-12 flex flex-col justify-center items-center">
-             <div id="agent-status" class="flex items-center justify-center text-gray-400 mb-2">
-                <!-- Status will be injected by JS -->
-            </div>
-            <div class="voice_visualizer">
-                <canvas id="visualizer" class="w-full h-full"></canvas>
+        <!-- Status Display -->
+        <div class="text-center mb-6">
+            <div id="agent-status" class="text-sm font-medium text-gray-400">
+                Initializing Turn Detection...
             </div>
         </div>
 
-        <!-- Real-time Transcription Display -->
+        <!-- Current Turn Display -->
         <div class="mb-6">
             <h3 class="text-lg font-semibold text-gray-300 mb-3 flex items-center">
                 <svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>
                 </svg>
-                Live Transcription
+                Current Turn
             </h3>
             
-            <!-- Transcription Container -->
-            <div id="user-transcription-container" class="transcription-card bg-gray-800 rounded-lg p-4 hidden min-h-[80px] flex items-center">
-                <div class="text-gray-400">Start speaking to see real-time transcription...</div>
+            <!-- Current Turn Container -->
+            <div id="current-turn-container" class="hidden">
+                <!-- Current turn transcription will appear here -->
+            </div>
+            
+            <!-- Placeholder when not speaking -->
+            <div id="user-transcription-container" class="bg-gray-800/50 rounded-lg p-4 border border-gray-600">
+                <div class="text-center text-gray-400">
+                    <svg class="w-8 h-8 mx-auto mb-2 opacity-50" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/>
+                    </svg>
+                    Start speaking to see real-time turn detection
+                </div>
             </div>
         </div>
 
-        <!-- Instructions -->
-        <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-600">
-            <h4 class="text-sm font-semibold text-gray-300 mb-2">Instructions:</h4>
-            <ul class="text-xs text-gray-400 space-y-1">
-                <li>• Click the record button to start streaming audio</li>
-                <li>• Speak clearly into your microphone</li>
-                <li>• Watch real-time transcription appear above</li>
-                <li>• Yellow indicator = partial transcription</li>
-                <li>• Green indicator = final transcription</li>
+        <!-- Turn History -->
+        <div class="mb-6">
+            <h3 class="text-lg font-semibold text-gray-300 mb-3 flex items-center">
+                <svg class="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/>
+                </svg>
+                Turn History
+            </h3>
+            
+            <!-- Turn History Container -->
+            <div id="turn-history-container" class="space-y-3 max-h-64 overflow-y-auto bg-gray-800/30 rounded-lg p-4 border border-gray-700">
+                <div class="text-center text-gray-500 text-sm">
+                    No turns completed yet. Start speaking to see turn detection in action!
+                </div>
+            </div>
+        </div>
+
+        <!-- Enhanced Instructions for Turn Detection -->
+        <div class="bg-gradient-to-r from-purple-900/30 to-blue-900/30 rounded-lg p-4 border border-purple-600/50">
+            <h4 class="text-sm font-semibold text-purple-300 mb-3 flex items-center">
+                <svg class="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+                Day 18 - Turn Detection Instructions
+            </h4>
+            <ul class="text-xs text-gray-300 space-y-2">
+                <li class="flex items-center space-x-2">
+                    <div class="w-1.5 h-1.5 bg-yellow-400 rounded-full"></div>
+                    <span><strong>Speak naturally:</strong> The system will detect when you start and stop speaking</span>
+                </li>
+                <li class="flex items-center space-x-2">
+                    <div class="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
+                    <span><strong>Pause to complete turns:</strong> Stop speaking for 0.8-1.5 seconds to end a turn</span>
+                </li>
+                <li class="flex items-center space-x-2">
+                    <div class="w-1.5 h-1.5 bg-green-400 rounded-full"></div>
+                    <span><strong>Watch notifications:</strong> Green indicators show completed turns</span>
+                </li>
+                <li class="flex items-center space-x-2">
+                    <div class="w-1.5 h-1.5 bg-purple-400 rounded-full"></div>
+                    <span><strong>Check console:</strong> Detailed turn information appears in browser console</span>
+                </li>
             </ul>
         </div>
 
-        <!-- Legacy Conversation Log (hidden for now) -->
-        <div id="conversation-container" class="space-y-4 mt-6 hidden">
-            <div id="ai-response-container" class="text-left text-purple-300 p-3 bg-gray-800 rounded-lg hidden"></div>
-            <div id="audio-container" class="w-full"></div>
+        <!-- Technical Info -->
+        <div class="mt-4 text-center">
+            <p class="text-xs text-gray-500">
+                Using AssemblyAI Universal Streaming API with Enhanced Turn Detection
+            </p>
         </div>
+
     </div>
 
     <script src="/static/script.js"></script>
