@@ -1,4 +1,4 @@
-# app.py - Day 20: Gemini streaming -> Murf WS stream-input (prints base64 audio)
+# app.py - Day 21: Gemini streaming -> Murf WS stream-input -> Client audio streaming
 
 import os
 import logging
@@ -53,6 +53,7 @@ try:
 
     aai.settings.api_key = api_key
     logger.info("✅ AssemblyAI configured successfully with Enhanced Turn Detection")
+
 except ImportError as e:
     logger.error(f"AssemblyAI import failed: {e}")
     raise
@@ -70,6 +71,7 @@ try:
     genai.configure(api_key=gemini_api_key)
     model = genai.GenerativeModel('gemini-1.5-flash')
     logger.info("✅ Google Gemini 1.5 Flash configured successfully for streaming LLM responses")
+
 except ImportError as e:
     logger.error(f"Google Generative AI import failed: {e}")
     raise
@@ -118,15 +120,13 @@ def schedule_websocket_message(loop: asyncio.AbstractEventLoop, websocket: WebSo
 
 # --- LLM streaming -> Murf stream-input bridge ---
 
-
-
 def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket, user_input: str, turn_number: int):
     """Schedule LLM streaming response in a separate thread and pipe to Murf stream-input WS."""
-
+    
     def stream_llm_response():
         try:
             logger.info(f"🤖 Starting LLM streaming for turn #{turn_number}: '{user_input}'")
-
+            
             schedule_websocket_message(loop, websocket, {
                 "type": "llm_streaming_start",
                 "turn_number": turn_number,
@@ -147,15 +147,15 @@ def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket
             )
 
             accumulated_response = ""
-
             murf_api_key = os.getenv("MURF_API_KEY", "").strip()
             if not murf_api_key:
                 raise ValueError("MURF_API_KEY is missing")
+
             voice_id = os.getenv("MURF_DEFAULT_VOICE_ID", "en-US-amara").strip()
 
             async def run_murf_streaming():
-                nonlocal accumulated_response  # FIX: declare nonlocal before using it below
-
+                nonlocal accumulated_response
+                
                 # Murf stream-input per quickstart: 44.1k WAV MONO
                 async with MurfStreamInputWS(
                     api_key=murf_api_key,
@@ -168,12 +168,16 @@ def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket
                     pitch=0,
                     variation=1,
                 ) as murf:
+                    # NEW: Pass client WebSocket and turn number to Murf client
+                    murf.client_websocket = websocket
+                    murf.turn_number = turn_number
+                    
                     # Forward Gemini chunks as Murf text messages
                     for chunk in response:
                         if hasattr(chunk, "text") and chunk.text:
                             text_piece = chunk.text
                             accumulated = accumulated_response + text_piece
-
+                            
                             logger.info(f"🤖 LLM Chunk: '{text_piece}'")
                             schedule_websocket_message(loop, websocket, {
                                 "type": "llm_chunk",
@@ -185,7 +189,6 @@ def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket
 
                             # Send to Murf
                             await murf.send_text_chunk(text_piece, end=False)
-
                             # Update accumulator after successful send
                             accumulated_response = accumulated
 
@@ -196,7 +199,7 @@ def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket
 
             # Run the async Murf coroutine on the running loop
             murf_task = asyncio.run_coroutine_threadsafe(run_murf_streaming(), loop)
-
+            
             # Wait for Murf to finish
             try:
                 murf_task.result(timeout=120)
@@ -233,12 +236,12 @@ def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    logger.info("🔗 WebSocket connection established for Day 20 Streaming LLM -> Murf WS TTS.")
-
+    logger.info("🔗 WebSocket connection established for Day 21 Streaming Audio to Client.")
+    
     session_id = str(uuid.uuid4())
     loop = asyncio.get_running_loop()
     streaming_client = None
-
+    
     # Turn tracking with punctuation handling
     turn_counter = {'count': 0}
     last_turn = {'raw': '', 'timestamp': 0.0}
@@ -252,13 +255,13 @@ async def websocket_endpoint(websocket: WebSocket):
         )
 
         streaming_client.on(StreamingEvents.Begin,
-            lambda client, event: handle_begin(event, websocket, loop))
+                          lambda client, event: handle_begin(event, websocket, loop))
         streaming_client.on(StreamingEvents.Turn,
-            lambda client, event: handle_turn_with_llm_streaming(event, websocket, loop, turn_counter, last_turn))
+                          lambda client, event: handle_turn_with_llm_streaming(event, websocket, loop, turn_counter, last_turn))
         streaming_client.on(StreamingEvents.Error,
-            lambda client, error: handle_error(error, websocket, loop))
+                          lambda client, error: handle_error(error, websocket, loop))
         streaming_client.on(StreamingEvents.Termination,
-            lambda client, event: handle_termination(event, websocket, loop))
+                          lambda client, event: handle_termination(event, websocket, loop))
 
         streaming_client.connect(
             StreamingParameters(
@@ -272,10 +275,11 @@ async def websocket_endpoint(websocket: WebSocket):
             )
         )
 
-        logger.info("🚀 Connected to AssemblyAI with Enhanced Turn Detection and LLM Streaming!")
+        logger.info("🚀 Connected to AssemblyAI with Enhanced Turn Detection and Audio Streaming!")
+
         await websocket.send_text(json.dumps({
             "type": "connection_established",
-            "message": "Connected to AssemblyAI with Enhanced Turn Detection and LLM Streaming",
+            "message": "Connected to AssemblyAI with Enhanced Turn Detection and Audio Streaming",
             "session_id": session_id,
             "timestamp": datetime.now().isoformat()
         }))
@@ -301,6 +305,7 @@ async def websocket_endpoint(websocket: WebSocket):
             "type": "error",
             "message": f"Failed to connect to speech recognition service: {str(e)}"
         }))
+
     finally:
         if streaming_client:
             try:
@@ -313,11 +318,11 @@ async def websocket_endpoint(websocket: WebSocket):
 # --- Event handlers ---
 
 def handle_begin(event: BeginEvent, websocket: WebSocket, loop: asyncio.AbstractEventLoop):
-    logger.info(f"🚀 Enhanced Turn Detection with LLM Streaming session began: {event.id}")
+    logger.info(f"🚀 Enhanced Turn Detection with Audio Streaming session began: {event.id}")
     schedule_websocket_message(loop, websocket, {
         "type": "session_begin",
         "session_id": event.id,
-        "message": "Turn detection with LLM streaming active - speak naturally and pause to complete turns",
+        "message": "Turn detection with audio streaming active - speak naturally and pause to complete turns",
         "timestamp": datetime.now().isoformat()
     })
 
@@ -377,7 +382,7 @@ def handle_turn_with_llm_streaming(event: TurnEvent, websocket: WebSocket, loop:
                 "turn_number": turn_counter['count']
             })
 
-            # Trigger LLM streaming -> Murf streaming
+            # Trigger LLM streaming -> Murf streaming -> Client audio streaming
             if event.transcript.strip():
                 schedule_llm_streaming(loop, websocket, event.transcript, turn_counter['count'])
         else:
@@ -409,5 +414,5 @@ def handle_termination(event: TerminationEvent, websocket: WebSocket, loop: asyn
 
 if __name__ == "__main__":
     import uvicorn
-    logger.info("🎙️ Starting Day 20 - Streaming LLM -> Murf WS stream-input Server")
+    logger.info("🎙️ Starting Day 21 - Streaming Audio Data to Client Server")
     uvicorn.run(app, host="127.0.0.1", port=8000)

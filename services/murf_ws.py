@@ -1,4 +1,4 @@
-# murf_ws.py
+# services/murf_ws.py - Day 21: Modified to stream audio to client
 
 import os
 import asyncio
@@ -6,7 +6,7 @@ import json
 import logging
 import urllib.parse
 import websockets
-# import base64  # only needed if you want to decode
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class MurfStreamInputWS:
     - Send voice_config first
     - Send multiple {"text": "..."} messages (one per LLM chunk)
     - End with {"end": true}
-    - Receive {"audio": "<base64>", "final": bool}; print base64 to console
+    - Receive {"audio": "", "final": bool}; forward base64 to client
     """
 
     def __init__(
@@ -25,8 +25,8 @@ class MurfStreamInputWS:
         api_key: str,
         voice_id: str,
         sample_rate: int = 44100,
-        channel_type: str = "MONO",   # MONO or STEREO
-        audio_format: str = "WAV",    # WAV or MP3 (per docs)
+        channel_type: str = "MONO", # MONO or STEREO
+        audio_format: str = "WAV", # WAV or MP3 (per docs)
         style: str = "Conversational",
         rate: int = 0,
         pitch: int = 0,
@@ -46,10 +46,13 @@ class MurfStreamInputWS:
         self.rate = rate
         self.pitch = pitch
         self.variation = variation
-
         self.ws = None
         self._connected = False
         self._done = asyncio.Event()
+        
+        # NEW: Client WebSocket reference for forwarding audio
+        self.client_websocket = None
+        self.turn_number = None
 
     def _build_url(self) -> str:
         base = "wss://api.murf.ai/v1/speech/stream-input"
@@ -110,9 +113,11 @@ class MurfStreamInputWS:
         """
         if not text and not end:
             return
+
         msg = {"text": text} if text else {}
         if end:
             msg["end"] = True
+
         await self._send_json(msg)
 
     async def wait_for_complete(self, timeout: float = 90.0):
@@ -130,21 +135,41 @@ class MurfStreamInputWS:
                     logger.debug(f"Murf non-JSON message: {message}")
                     continue
 
-                # Murf sends {"audio":"<b64>", "final": bool, ...}
+                # Murf sends {"audio":"", "final": bool, ...}
                 if "audio" in data:
                     b64 = data.get("audio", "")
                     # Print base64 chunk (truncate for log readability)
                     logger.info(f"🎧 Murf base64 audio chunk: {b64[:120]}... (len={len(b64)})")
+                    
+                    # NEW: Forward base64 chunk to client WebSocket
+                    if self.client_websocket and b64:
+                        try:
+                            await self.client_websocket.send_text(json.dumps({
+                                "type": "audio_chunk",
+                                "audio_data": b64,
+                                "final": data.get("final", False),
+                                "turn_number": self.turn_number,
+                                "timestamp": datetime.now().isoformat()
+                            }))
+                            logger.info(f"✅ Forwarded audio chunk to client (turn {self.turn_number})")
+                        except Exception as e:
+                            logger.error(f"Error sending audio chunk to client: {e}")
 
-                    # If you want to process WAV bytes (e.g., skip header), uncomment below:
-                    # audio_bytes = base64.b64decode(b64)
-                    # If format is WAV, first chunk includes a 44-byte header:
-                    # if self.audio_format.upper() == "WAV" and len(audio_bytes) > 44:
-                    #     audio_bytes = audio_bytes[44:]
+                    if data.get("final"):
+                        logger.info("✅ Murf stream-input synthesis complete")
+                        # Send final audio completion message to client
+                        if self.client_websocket:
+                            try:
+                                await self.client_websocket.send_text(json.dumps({
+                                    "type": "audio_streaming_complete",
+                                    "turn_number": self.turn_number,
+                                    "message": f"Audio streaming complete for turn {self.turn_number}",
+                                    "timestamp": datetime.now().isoformat()
+                                }))
+                            except Exception as e:
+                                logger.error(f"Error sending audio completion to client: {e}")
+                        self._done.set()
 
-                if data.get("final"):
-                    logger.info("✅ Murf stream-input synthesis complete")
-                    self._done.set()
         except websockets.ConnectionClosed as e:
             logger.info(f"Murf WS connection closed: {e}")
             self._done.set()
