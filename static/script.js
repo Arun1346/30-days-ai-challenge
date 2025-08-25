@@ -380,25 +380,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const turnHistoryContainer = document.getElementById('turn-history-container');
     const systemMessagesContainer = document.getElementById('system-messages');
 
-    // Load voices
-    async function loadVoices() {
-        try {
-            const response = await fetch('/voices');
-            const data = await response.json();
-            voiceSelect.innerHTML = '';
-            data.voices.forEach(voice => {
-                const option = document.createElement('option');
-                option.value = voice.voice_id;
-                option.textContent = `${voice.name} (${voice.labels.gender || 'N/A'})`;
-                voiceSelect.appendChild(option);
-            });
-            console.log(`✅ Loaded ${data.voices.length} voices`);
-        } catch (error) {
-            console.error("❌ Voice loading failed:", error);
-        }
-    }
-
-    await loadVoices();
 
     // Recording button
     recordButton.addEventListener('click', async () => {

@@ -179,7 +179,7 @@ def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket
             murf_api_key = os.getenv("MURF_API_KEY", "").strip()
             if not murf_api_key:
                 raise ValueError("MURF_API_KEY is missing")
-            voice_id = os.getenv("MURF_DEFAULT_VOICE_ID", "en-US-amara").strip()
+            voice_id = os.getenv("MURF_DEFAULT_VOICE_ID", "en-US-terrell").strip()
 
             async def run_murf_streaming():
                 nonlocal accumulated_response
