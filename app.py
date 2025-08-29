@@ -1,4 +1,4 @@
-# app.py - Day 27 Complete A.R.I.A Voice Agent with Configuration Panel
+# app.py - Day 28 Complete A.R.I.A Voice Agent - FIXED VERSION
 import os
 import logging
 import uuid
@@ -7,6 +7,7 @@ import json
 import threading
 import time
 import re
+import base64
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -20,7 +21,6 @@ from config_manager import config_manager
 
 # Import services
 from services import llm, tts
-from services.murf_ws import MurfStreamInputWS
 
 # AssemblyAI imports - MOVED TO MODULE LEVEL TO FIX THE ERROR
 import assemblyai as aai
@@ -39,12 +39,12 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('aria_day27.log')
+        logging.FileHandler('aria_day28.log')
     ]
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="A.R.I.A Voice Agent - Day 27", version="2.0.0")
+app = FastAPI(title="A.R.I.A Voice Agent - Day 28", version="2.0.0")
 
 # Create static directory if it doesn't exist
 os.makedirs("static", exist_ok=True)
@@ -236,15 +236,14 @@ def schedule_websocket_message(loop: asyncio.AbstractEventLoop, websocket: WebSo
     except Exception as e:
         logger.error(f"Error scheduling WebSocket message: {e}")
 
-# In app.py, replace the Murf WebSocket section with HTTP streaming:
-
+# --- Enhanced LLM Streaming with HTTP Audio Generation ---
 def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket,
                           user_input: str, turn_number: int, session_id: str):
     """Enhanced LLM streaming with Murf HTTP streaming"""
     
     def stream_llm_response():
         try:
-            # Rate limiting check (existing code)
+            # Rate limiting check
             if not rate_limiter.can_make_request():
                 logger.warning("⚠️ Rate limit reached")
                 schedule_websocket_message(loop, websocket, {
@@ -268,16 +267,21 @@ def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket
 
             logger.info(f"🤖 Starting LLM streaming for turn #{turn_number}")
             
-            # Configure LLM streaming (existing code)
+            schedule_websocket_message(loop, websocket, {
+                "type": "llm_streaming_start",
+                "turn_number": turn_number,
+                "message": f"🤖 AI responding to turn #{turn_number}...",
+                "timestamp": datetime.now().isoformat()
+            })
+
+            # Configure LLM streaming
             import google.generativeai as genai
             genai.configure(api_key=gemini_key)
             
             from services.llm import get_streaming_llm_response, chat_histories
             
-            # Get streaming response from Gemini
-            streaming_response, chat_instance = get_streaming_llm_response(
-                session_id, user_input, gemini_key, config_manager.get_api_key("tavily") or ""
-            )
+            # FIXED: Use correct function signature
+            streaming_response, chat_instance = get_streaming_llm_response(session_id, user_input)
             
             accumulated_response = ""
             
@@ -297,12 +301,14 @@ def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket
 
             # Now generate audio from complete text using HTTP streaming
             async def generate_audio():
-                from services.murf_http_stream import MurfHTTPStreaming
-                
-                murf_client = MurfHTTPStreaming(murf_key)
-                voice_id = os.getenv("MURF_DEFAULT_VOICE_ID", "en-US-natalie")
-                
                 try:
+                    from services.murf_http_stream import MurfHTTPStreaming
+                    
+                    murf_client = MurfHTTPStreaming(murf_key)
+                    voice_id = os.getenv("MURF_DEFAULT_VOICE_ID", "en-US-natalie")
+                    
+                    logger.info(f"🎵 Starting Murf HTTP streaming for: '{accumulated_response[:50]}...'")
+                    
                     # Collect all audio chunks
                     audio_chunks = []
                     async for chunk in murf_client.stream_text_to_audio(accumulated_response, voice_id):
@@ -323,7 +329,16 @@ def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket
                         }))
                         
                         logger.info(f"🎵 Sent complete audio: {len(complete_audio)} bytes")
-                    
+                        
+                        await websocket.send_text(json.dumps({
+                            "type": "audio_streaming_complete",
+                            "turn_number": turn_number,
+                            "total_chunks": 1,
+                            "total_audio_data": len(audio_base64)
+                        }))
+                    else:
+                        logger.warning("🎵 No audio chunks received from Murf")
+                        
                 except Exception as e:
                     logger.error(f"Audio generation failed: {e}")
                     await websocket.send_text(json.dumps({
@@ -362,7 +377,7 @@ def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    logger.info("🔗 WebSocket connection established for A.R.I.A Day 27")
+    logger.info("🔗 WebSocket connection established for A.R.I.A Day 28")
     
     session_id = str(uuid.uuid4())
     loop = asyncio.get_running_loop()
@@ -427,7 +442,7 @@ async def websocket_endpoint(websocket: WebSocket):
         
         await websocket.send_text(json.dumps({
             "type": "connection_established",
-            "message": "A.R.I.A Day 27 ready with dynamic API configuration",
+            "message": "A.R.I.A Day 28 ready with HTTP streaming audio",
             "session_id": session_id,
             "config_status": config_status,
             "timestamp": datetime.now().isoformat()
@@ -443,18 +458,24 @@ async def websocket_endpoint(websocket: WebSocket):
                 break
             except Exception as e:
                 logger.error(f"Error in WebSocket loop: {e}")
-                await websocket.send_text(json.dumps({
-                    "type": "error",
-                    "message": f"Streaming error: {str(e)}"
-                }))
+                try:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": f"Streaming error: {str(e)}"
+                    }))
+                except:
+                    pass
                 break
 
     except Exception as e:
         logger.error(f"Failed to establish connection: {e}")
-        await websocket.send_text(json.dumps({
-            "type": "error",
-            "message": f"Failed to connect: {str(e)}"
-        }))
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": f"Failed to connect: {str(e)}"
+            }))
+        except:
+            pass
     finally:
         if streaming_client:
             try:
@@ -464,13 +485,13 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception as e:
                 logger.error(f"Error during cleanup: {e}")
 
-# --- Event Handlers - NOW WITH PROPER IMPORTS ---
+# --- Event Handlers ---
 def handle_begin(event: BeginEvent, websocket: WebSocket, loop: asyncio.AbstractEventLoop):
     logger.info(f"🚀 A.R.I.A session began: {event.id}")
     schedule_websocket_message(loop, websocket, {
         "type": "session_begin",
         "session_id": event.id,
-        "message": "A.R.I.A Day 27 active - speak naturally!",
+        "message": "A.R.I.A Day 28 active - speak naturally!",
         "timestamp": datetime.now().isoformat()
     })
 
@@ -542,22 +563,23 @@ def handle_error(error: StreamingError, websocket: WebSocket, loop: asyncio.Abst
 
 def handle_termination(event: TerminationEvent, websocket: WebSocket, loop: asyncio.AbstractEventLoop):
     logger.info(f"🔒 A.R.I.A session terminated: {event.audio_duration_seconds}s")
-    schedule_websocket_message(loop, websocket, {
-        "type": "session_terminated",
-        "message": f"A.R.I.A session ended - {event.audio_duration_seconds} seconds processed",
-        "total_audio_duration": event.audio_duration_seconds,
-        "timestamp": datetime.now().isoformat()
-    })
-
+    try:
+        schedule_websocket_message(loop, websocket, {
+            "type": "session_terminated",
+            "message": f"A.R.I.A session ended - {event.audio_duration_seconds} seconds processed",
+            "total_audio_duration": event.audio_duration_seconds,
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        logger.warning(f"WebSocket send failed (client likely disconnected): {e}")
 
 if __name__ == "__main__":
     import uvicorn
-    import os
     
     # Get port from environment variable (Render sets this)
     port = int(os.environ.get("PORT", 8000))
     
-    logger.info(f"🎙️ Starting A.R.I.A Day 27 on port {port}")
+    logger.info(f"🎙️ Starting A.R.I.A Day 28 on port {port}")
     uvicorn.run(
         app, 
         host="0.0.0.0",  # Important: bind to all interfaces for cloud deployment

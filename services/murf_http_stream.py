@@ -29,7 +29,8 @@ class MurfHTTPStreaming:
         }
         
         try:
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=60)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(
                     f"{self.base_url}/stream",
                     headers=headers,
@@ -39,17 +40,23 @@ class MurfHTTPStreaming:
                     if response.status != 200:
                         error_text = await response.text()
                         logger.error(f"Murf HTTP streaming failed: {response.status} - {error_text}")
-                        raise Exception(f"Murf API error: {response.status}")
+                        raise Exception(f"Murf API error: {response.status} - {error_text}")
                     
                     logger.info(f"🎵 Murf HTTP streaming started for: '{text[:50]}...'")
                     
                     # Stream audio chunks
+                    chunk_count = 0
                     async for chunk in response.content.iter_chunked(8192):
                         if chunk:
+                            chunk_count += 1
+                            logger.debug(f"🎵 Received chunk {chunk_count}: {len(chunk)} bytes")
                             yield chunk
                             
-                    logger.info("🎵 Murf HTTP streaming completed")
+                    logger.info(f"🎵 Murf HTTP streaming completed: {chunk_count} chunks")
                     
+        except asyncio.TimeoutError:
+            logger.error("🎵 Murf HTTP streaming timeout")
+            raise Exception("Murf streaming timeout")
         except Exception as e:
-            logger.error(f"Murf HTTP streaming error: {e}")
+            logger.error(f"🎵 Murf HTTP streaming error: {e}")
             raise
