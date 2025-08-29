@@ -1,4 +1,4 @@
-# llm.py
+# llm.py - Updated with proper API key handling
 
 import logging
 import re
@@ -46,7 +46,7 @@ RESPONSE FORMAT:
 
 Remember: You are an AI assistant designed to be maximally helpful while maintaining an air of sophisticated professionalism."""
 
-def perform_web_search(query: str, tavily_api_key: str) -> str:
+def perform_web_search(query: str, tavily_api_key: str = None) -> str:
     """
     Performs a web search using the Tavily API and returns a summarized result.
     """
@@ -97,10 +97,17 @@ def analyze_sentiment(text: str) -> str:
         logger.error(f"Sentiment analysis error: {e}")
         return "Sir/Ma'am, "
 
-def get_streaming_llm_response(session_id: str, user_text: str, gemini_api_key: str, tavily_api_key: str):
+def get_streaming_llm_response(session_id: str, user_text: str):
     """
     Gets a STREAMING response from Google Gemini with chat history, Aria persona, web search, and sentiment analysis.
+    This version uses the config_manager API keys instead of environment variables directly.
     """
+    # Import here to avoid circular imports
+    from config_manager import config_manager
+    
+    gemini_api_key = config_manager.get_api_key("gemini")
+    tavily_api_key = config_manager.get_api_key("tavily")
+    
     if not gemini_api_key:
         logger.error("Gemini API key not found.")
         raise ValueError("Gemini API key not found.")
@@ -118,8 +125,9 @@ def get_streaming_llm_response(session_id: str, user_text: str, gemini_api_key: 
 
     sentiment_prefix = analyze_sentiment(user_text)
 
+    # Check for web search requests
     search_keywords = r"\b(search( for)?|look up|find online)\b"
-    if re.search(search_keywords, user_text.lower()):
+    if re.search(search_keywords, user_text.lower()) and tavily_api_key:
         query = user_text.lower().replace("search for", "").replace("look up", "").replace("find online", "").strip()
         logger.info(f"🌐 Detected web search request: '{query}'")
         search_result = perform_web_search(query, tavily_api_key)
@@ -143,10 +151,17 @@ def get_streaming_llm_response(session_id: str, user_text: str, gemini_api_key: 
 
     return response, chat
 
-def get_llm_response(session_id: str, user_text: str, gemini_api_key: str, tavily_api_key: str) -> str:
+def get_llm_response(session_id: str, user_text: str) -> str:
     """
     Gets a non-streaming response from Google Gemini with Aria persona, web search, and sentiment analysis.
+    This version uses the config_manager API keys instead of environment variables directly.
     """
+    # Import here to avoid circular imports
+    from config_manager import config_manager
+    
+    gemini_api_key = config_manager.get_api_key("gemini")
+    tavily_api_key = config_manager.get_api_key("tavily")
+    
     if not gemini_api_key:
         logger.error("Gemini API key not found.")
         raise ValueError("Gemini API key not found.")
@@ -163,8 +178,9 @@ def get_llm_response(session_id: str, user_text: str, gemini_api_key: str, tavil
 
     sentiment_prefix = analyze_sentiment(user_text)
 
+    # Check for web search requests
     search_keywords = r"\b(search( for)?|look up|find online)\b"
-    if re.search(search_keywords, user_text.lower()):
+    if re.search(search_keywords, user_text.lower()) and tavily_api_key:
         query = user_text.lower().replace("search for", "").replace("look up", "").replace("find online", "").strip()
         logger.info(f"🌐 Detected web search request: '{query}'")
         search_result = perform_web_search(query, tavily_api_key)
