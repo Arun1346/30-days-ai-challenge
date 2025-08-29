@@ -236,14 +236,15 @@ def schedule_websocket_message(loop: asyncio.AbstractEventLoop, websocket: WebSo
     except Exception as e:
         logger.error(f"Error scheduling WebSocket message: {e}")
 
-# --- Enhanced LLM Streaming with Dynamic Keys ---
-def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket, 
-                         user_input: str, turn_number: int, session_id: str):
-    """Enhanced LLM streaming with dynamic API key management"""
+# In app.py, replace the Murf WebSocket section with HTTP streaming:
+
+def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket,
+                          user_input: str, turn_number: int, session_id: str):
+    """Enhanced LLM streaming with Murf HTTP streaming"""
     
     def stream_llm_response():
         try:
-            # Check rate limit
+            # Rate limiting check (existing code)
             if not rate_limiter.can_make_request():
                 logger.warning("⚠️ Rate limit reached")
                 schedule_websocket_message(loop, websocket, {
@@ -255,7 +256,7 @@ def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket
                 return
 
             rate_limiter.add_request()
-            
+
             # Get current API keys
             gemini_key = config_manager.get_api_key("gemini")
             murf_key = config_manager.get_api_key("murf")
@@ -267,90 +268,82 @@ def schedule_llm_streaming(loop: asyncio.AbstractEventLoop, websocket: WebSocket
 
             logger.info(f"🤖 Starting LLM streaming for turn #{turn_number}")
             
-            schedule_websocket_message(loop, websocket, {
-                "type": "llm_streaming_start",
-                "turn_number": turn_number,
-                "message": f"🤖 AI responding to turn #{turn_number}...",
-                "timestamp": datetime.now().isoformat()
-            })
-
-            # Configure LLM with current key
+            # Configure LLM streaming (existing code)
             import google.generativeai as genai
             genai.configure(api_key=gemini_key)
-
-            # Get streaming response
+            
             from services.llm import get_streaming_llm_response, chat_histories
             
-            # Update the API key in environment temporarily for the LLM service
-            original_gemini_key = os.environ.get("GEMINI_API_KEY")
-            os.environ["GEMINI_API_KEY"] = gemini_key
-            
-            try:
-                streaming_response, chat_instance = get_streaming_llm_response(session_id, user_input)
-            finally:
-                # Restore original environment
-                if original_gemini_key:
-                    os.environ["GEMINI_API_KEY"] = original_gemini_key
-                elif "GEMINI_API_KEY" in os.environ:
-                    del os.environ["GEMINI_API_KEY"]
+            # Get streaming response from Gemini
+            streaming_response, chat_instance = get_streaming_llm_response(
+                session_id, user_input, gemini_key, config_manager.get_api_key("tavily") or ""
+            )
             
             accumulated_response = ""
             
-            async def run_murf_streaming():
-                nonlocal accumulated_response
+            # Collect all LLM text first
+            for chunk in streaming_response:
+                if hasattr(chunk, "text") and chunk.text:
+                    text_piece = chunk.text
+                    accumulated_response += text_piece
+                    
+                    schedule_websocket_message(loop, websocket, {
+                        "type": "llm_chunk",
+                        "turn_number": turn_number,
+                        "chunk": text_piece,
+                        "accumulated": accumulated_response,
+                        "timestamp": datetime.now().isoformat()
+                    })
+
+            # Now generate audio from complete text using HTTP streaming
+            async def generate_audio():
+                from services.murf_http_stream import MurfHTTPStreaming
                 
-                async with MurfStreamInputWS(
-                    api_key=murf_key,
-                    voice_id=os.getenv("MURF_DEFAULT_VOICE_ID", "en-US-terrell").strip(),
-                    sample_rate=44100,
-                    channel_type="MONO",
-                    audio_format="WAV",
-                    style="Conversational",
-                    rate=0,
-                    pitch=0,
-                    variation=1,
-                ) as murf:
-                    murf.client_websocket = websocket
-                    murf.turn_number = turn_number
+                murf_client = MurfHTTPStreaming(murf_key)
+                voice_id = os.getenv("MURF_DEFAULT_VOICE_ID", "en-US-natalie")
+                
+                try:
+                    # Collect all audio chunks
+                    audio_chunks = []
+                    async for chunk in murf_client.stream_text_to_audio(accumulated_response, voice_id):
+                        audio_chunks.append(chunk)
                     
-                    logger.info(f"🎵 Murf WebSocket connected for turn {turn_number}")
+                    if audio_chunks:
+                        # Combine all chunks
+                        complete_audio = b''.join(audio_chunks)
+                        audio_base64 = base64.b64encode(complete_audio).decode('utf-8')
+                        
+                        # Send complete audio to client
+                        await websocket.send_text(json.dumps({
+                            "type": "audio_chunk",
+                            "turn_number": turn_number,
+                            "audio_data": audio_base64,
+                            "final": True,
+                            "timestamp": datetime.now().isoformat()
+                        }))
+                        
+                        logger.info(f"🎵 Sent complete audio: {len(complete_audio)} bytes")
                     
-                    # Stream text to Murf
-                    for chunk in streaming_response:
-                        if hasattr(chunk, "text") and chunk.text:
-                            text_piece = chunk.text
-                            accumulated_response += text_piece
-                            
-                            logger.info(f"🤖 LLM Chunk: '{text_piece[:50]}...'")
-                            
-                            schedule_websocket_message(loop, websocket, {
-                                "type": "llm_chunk",
-                                "turn_number": turn_number,
-                                "chunk": text_piece,
-                                "accumulated": accumulated_response,
-                                "timestamp": datetime.now().isoformat()
-                            })
-                            
-                            await murf.send_text_chunk(text_piece, end=False)
-                    
-                    # Signal end of text
-                    await murf.send_text_chunk("", end=True)
-                    
-                    # Update chat history
-                    chat_histories[session_id] = chat_instance.history
-                    logger.info(f"💾 Chat history updated for session {session_id}")
+                except Exception as e:
+                    logger.error(f"Audio generation failed: {e}")
+                    await websocket.send_text(json.dumps({
+                        "type": "audio_error",
+                        "turn_number": turn_number,
+                        "error": str(e),
+                        "timestamp": datetime.now().isoformat()
+                    }))
 
-            # Run Murf streaming
-            murf_task = asyncio.run_coroutine_threadsafe(run_murf_streaming(), loop)
-            murf_task.result(timeout=120)
-
-            logger.info(f"🤖 LLM RESPONSE COMPLETED for turn #{turn_number}")
+            # Run audio generation
+            audio_task = asyncio.run_coroutine_threadsafe(generate_audio(), loop)
+            audio_task.result(timeout=60)
+            
+            # Update chat history
+            chat_histories[session_id] = chat_instance.history
             
             schedule_websocket_message(loop, websocket, {
                 "type": "llm_streaming_complete",
                 "turn_number": turn_number,
                 "full_response": accumulated_response,
-                "message": f"🤖 AI response complete for turn #{turn_number}",
                 "timestamp": datetime.now().isoformat()
             })
 
