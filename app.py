@@ -556,7 +556,18 @@ def handle_termination(event: TerminationEvent, websocket: WebSocket, loop: asyn
         "timestamp": datetime.now().isoformat()
     })
 
+
 if __name__ == "__main__":
     import uvicorn
-    logger.info("🎙️ Starting A.R.I.A Day 27 - Voice Agent with Configuration Panel")
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+    import os
+    
+    # Get port from environment variable (Render sets this)
+    port = int(os.environ.get("PORT", 8000))
+    
+    logger.info(f"🎙️ Starting A.R.I.A Day 27 on port {port}")
+    uvicorn.run(
+        app, 
+        host="0.0.0.0",  # Important: bind to all interfaces for cloud deployment
+        port=port,
+        log_level="info"
+    )
