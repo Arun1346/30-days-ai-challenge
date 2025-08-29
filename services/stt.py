@@ -1,10 +1,10 @@
-# services/stt.py
+# stt.py
+
 import os
 import assemblyai
 from fastapi import UploadFile
 import logging
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 

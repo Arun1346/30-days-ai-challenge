@@ -1,10 +1,10 @@
-# services/tts.py
+# tts.py
+
 import os
 import requests
 import time
 import logging
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ def get_voices() -> list:
     """Fetches the list of available voices from the Murf AI API."""
     api_key = os.getenv("MURF_API_KEY")
     if not api_key:
-        logger.error("MURF_API_KEY not found in environment variables.")
+        logger.error("MURF_API_KEY not found.")
         raise ValueError("MURF_API_KEY not found.")
     
     api_key = api_key.strip()
@@ -38,7 +38,7 @@ def generate_speech_audio(text: str, voice_id: str, session_id: str) -> str:
     """
     api_key = os.getenv("MURF_API_KEY")
     if not api_key:
-        logger.error("MURF_API_KEY not found in environment variables.")
+        logger.error("MURF_API_KEY not found.")
         raise ValueError("MURF_API_KEY not found.")
     
     api_key = api_key.strip()
@@ -57,7 +57,7 @@ def generate_speech_audio(text: str, voice_id: str, session_id: str) -> str:
         "modelVersion": "GEN2"
     }
     
-    logger.info(f"Requesting speech generation from Murf AI...")
+    logger.info("Requesting speech generation from Murf AI...")
     
     try:
         response = requests.post(generate_url, json=payload, headers=headers)
@@ -87,4 +87,3 @@ def generate_speech_audio(text: str, voice_id: str, session_id: str) -> str:
         logger.error(f"HTTP Error: {e}")
         logger.error(f"Response content: {e.response.text if e.response else 'No response'}")
         raise
-

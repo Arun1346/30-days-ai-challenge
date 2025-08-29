@@ -1,218 +1,358 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>A.R.I.A - Advanced Responsive Intelligence Assistant</title>
+    <title>A.R.I.A - Day 27 Advanced Voice Agent</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* A.R.I.A Persona Header Styling */
-        .persona-header {
-            background: linear-gradient(135deg, #0f172a, #1e293b, #334155);
-            border: 2px solid #3b82f6;
-            border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
-            text-align: center;
-            position: relative;
-            overflow: hidden;
+        .config-panel {
+            transform: translateX(-100%);
+            transition: transform 0.3s ease-in-out;
         }
-        
-        .persona-header::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.1), transparent);
-            animation: scan 3s linear infinite;
+        .config-panel.active {
+            transform: translateX(0);
         }
-        
-        @keyframes scan {
-            0% { left: -100%; }
-            100% { left: 100%; }
+        .overlay {
+            display: none;
+            backdrop-filter: blur(2px);
         }
-        
-        .persona-title {
-            color: #3b82f6;
-            font-size: 2rem;
-            font-weight: bold;
-            margin-bottom: 0.5rem;
-            font-family: 'Courier New', monospace;
-            letter-spacing: 2px;
-            position: relative;
-            z-index: 1;
+        .overlay.active {
+            display: block;
         }
-        
-        .persona-subtitle {
-            color: #94a3b8;
-            font-size: 0.875rem;
-            font-style: italic;
-            position: relative;
-            z-index: 1;
-        }
-        
-        .ai-emoji {
-            font-size: 1.5rem;
-            margin: 0 0.5rem;
-        }
-        
-        .status-indicator {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            background-color: #10b981;
+        .api-status {
+            width: 12px;
+            height: 12px;
             border-radius: 50%;
+            display: inline-block;
             margin-left: 8px;
-            animation: pulse 2s infinite;
         }
+        .status-connected { background-color: #10b981; }
+        .status-error { background-color: #ef4444; }
+        .status-testing {
+            background-color: #f59e0b;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        .status-warning { background-color: #f97316; }
         
         @keyframes pulse {
             0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
+            50% { opacity: 0.4; }
         }
-
-        .voice-signature {
-            background: linear-gradient(45deg, #1e293b, #334155);
-            border: 1px solid #475569;
-            border-radius: 8px;
-            padding: 1rem;
-            color: #e2e8f0;
-            font-family: 'Courier New', monospace;
-            font-size: 0.875rem;
+        
+        .recording {
+            animation: recordPulse 1.5s ease-in-out infinite;
+        }
+        
+        @keyframes recordPulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            50% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6, #ec4899);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .glass-effect {
+            background: rgba(17, 24, 39, 0.8);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(75, 85, 99, 0.3);
+        }
+        
+        .conversation-item {
+            transition: all 0.3s ease;
+        }
+        .conversation-item:hover {
+            transform: translateX(4px);
+            background: rgba(55, 65, 81, 0.5);
         }
     </style>
 </head>
-
-<body class="min-h-screen bg-gray-900 text-white font-sans">
-    <div class="container mx-auto px-4 py-8 max-w-6xl">
-        <!-- A.R.I.A Header -->
-        <div class="persona-header">
-            <div class="persona-title">
-                <span class="ai-emoji">🤖</span>
-                A.R.I.A
-                <span class="status-indicator"></span>
+<body class="bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 text-white min-h-screen">
+    <!-- Configuration Overlay -->
+    <div id="config-overlay" class="overlay fixed inset-0 bg-black bg-opacity-60 z-40"></div>
+    
+    <!-- Configuration Panel -->
+    <div id="config-panel" class="config-panel fixed left-0 top-0 h-full w-96 glass-effect border-r border-gray-600 z-50 overflow-y-auto shadow-2xl">
+        <div class="p-6">
+            <!-- Header -->
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold text-blue-400 flex items-center">
+                    <i class="fas fa-cog mr-3 text-lg"></i>
+                    Configuration Center
+                </h2>
+                <button id="close-config" class="text-gray-400 hover:text-white hover:bg-gray-700 p-2 rounded-lg transition-colors">
+                    <i class="fas fa-times text-lg"></i>
+                </button>
             </div>
-            <div class="persona-subtitle">
-                Advanced Responsive Intelligence Assistant
-                <br>
-                <small>🎯 Intelligent • 💬 Conversational • 🧠 Memory-Enhanced</small>
-            </div>
-        </div>
-
-        <!-- Main Content Grid -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
-            <!-- Left Column: Controls -->
-            <div class="lg:col-span-1 space-y-6">
-                
-                <!-- A.R.I.A Voice Signature -->
-                <div class="voice-signature">
-                    <h3 class="text-lg font-semibold text-blue-400 mb-3">🎙️ Voice Signature</h3>
-                    <div class="space-y-2">
-                        <div class="flex justify-between">
-                            <span class="text-gray-400">Voice:</span>
-                            <span class="text-blue-300">British Male</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-400">Style:</span>
-                            <span class="text-blue-300">Professional</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-gray-400">Persona:</span>
-                            <span class="text-blue-300">JARVIS-Inspired</span>
-                        </div>
-                        <div class="mt-3 text-xs text-gray-500 italic">
-                            "A.R.I.A maintains a consistent, sophisticated voice that matches the JARVIS-style persona for an authentic experience."
-                        </div>
+            <!-- Overall Status -->
+            <div id="config-status-summary" class="mb-6 p-4 rounded-lg bg-gray-800/50 border border-gray-600">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-medium text-gray-300">System Status</span>
+                    <div id="overall-status-indicator" class="api-status status-warning"></div>
+                </div>
+                <p id="status-message" class="text-xs text-gray-400">Checking configuration...</p>
+            </div>
+            
+            <!-- API Keys Configuration -->
+            <div class="space-y-5">
+                <!-- AssemblyAI -->
+                <div class="config-section bg-gray-800/30 p-4 rounded-lg border border-gray-700">
+                    <label class="flex items-center justify-between text-sm font-medium text-gray-300 mb-3">
+                        <span class="flex items-center">
+                            <i class="fas fa-microphone text-blue-400 mr-2"></i>
+                            AssemblyAI (Speech-to-Text)
+                        </span>
+                        <div id="assemblyai-status" class="api-status status-error"></div>
+                    </label>
+                    <div class="flex gap-2">
+                        <input type="password" id="assemblyai-key" 
+                               class="flex-1 bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                               placeholder="Enter AssemblyAI API key">
+                        <button id="test-assemblyai" class="bg-blue-600/80 hover:bg-blue-600 px-4 py-2 rounded-lg transition-colors">
+                            <i class="fas fa-plug text-sm"></i>
+                        </button>
                     </div>
                 </div>
-
-                <!-- Recording Controls -->
-                <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                    <h3 class="text-lg font-semibold text-white mb-4">Controls</h3>
-                    
-                    <button id="record-button" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 flex items-center justify-center">
-                        <svg id="record-icon" class="w-6 h-6 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                            <circle cx="10" cy="10" r="8"/>
-                        </svg>
-                        <svg id="stop-icon" class="w-6 h-6 mr-2 hidden" fill="currentColor" viewBox="0 0 20 20">
-                            <rect x="6" y="6" width="8" height="8"/>
-                        </svg>
-                        <span>Start Conversation</span>
+                
+                <!-- Google Gemini -->
+                <div class="config-section bg-gray-800/30 p-4 rounded-lg border border-gray-700">
+                    <label class="flex items-center justify-between text-sm font-medium text-gray-300 mb-3">
+                        <span class="flex items-center">
+                            <i class="fas fa-brain text-purple-400 mr-2"></i>
+                            Google Gemini (AI Responses)
+                        </span>
+                        <div id="gemini-status" class="api-status status-error"></div>
+                    </label>
+                    <div class="flex gap-2">
+                        <input type="password" id="gemini-key"
+                               class="flex-1 bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                               placeholder="Enter Gemini API key">
+                        <button id="test-gemini" class="bg-purple-600/80 hover:bg-purple-600 px-4 py-2 rounded-lg transition-colors">
+                            <i class="fas fa-plug text-sm"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Murf AI -->
+                <div class="config-section bg-gray-800/30 p-4 rounded-lg border border-gray-700">
+                    <label class="flex items-center justify-between text-sm font-medium text-gray-300 mb-3">
+                        <span class="flex items-center">
+                            <i class="fas fa-volume-up text-green-400 mr-2"></i>
+                            Murf AI (Text-to-Speech)
+                        </span>
+                        <div id="murf-status" class="api-status status-error"></div>
+                    </label>
+                    <div class="flex gap-2">
+                        <input type="password" id="murf-key"
+                               class="flex-1 bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                               placeholder="Enter Murf AI API key">
+                        <button id="test-murf" class="bg-green-600/80 hover:bg-green-600 px-4 py-2 rounded-lg transition-colors">
+                            <i class="fas fa-plug text-sm"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Tavily Search (Optional) -->
+                <div class="config-section bg-gray-800/30 p-4 rounded-lg border border-gray-700">
+                    <label class="flex items-center justify-between text-sm font-medium text-gray-300 mb-3">
+                        <span class="flex items-center">
+                            <i class="fas fa-search text-yellow-400 mr-2"></i>
+                            Tavily Search (Optional)
+                        </span>
+                        <div id="tavily-status" class="api-status status-warning"></div>
+                    </label>
+                    <div class="flex gap-2">
+                        <input type="password" id="tavily-key"
+                               class="flex-1 bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                               placeholder="Enter Tavily API key (optional)">
+                        <button id="test-tavily" class="bg-yellow-600/80 hover:bg-yellow-600 px-4 py-2 rounded-lg transition-colors">
+                            <i class="fas fa-plug text-sm"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+                
+            <!-- Configuration Actions -->
+            <div class="border-t border-gray-700 pt-6 mt-6 space-y-3">
+                <button id="save-config" class="w-full bg-green-600/80 hover:bg-green-600 py-3 rounded-lg font-medium transition-colors">
+                    <i class="fas fa-save mr-2"></i>Save Configuration
+                </button>
+                <button id="test-all-apis" class="w-full bg-blue-600/80 hover:bg-blue-600 py-3 rounded-lg font-medium transition-colors">
+                    <i class="fas fa-broadcast-tower mr-2"></i>Test All APIs
+                </button>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="export-config" class="bg-purple-600/80 hover:bg-purple-600 py-2 rounded-lg text-sm transition-colors">
+                        <i class="fas fa-download mr-1"></i>Export
+                    </button>
+                    <button id="import-config-btn" class="bg-orange-600/80 hover:bg-orange-600 py-2 rounded-lg text-sm transition-colors">
+                        <i class="fas fa-upload mr-1"></i>Import
                     </button>
                 </div>
-
-                <!-- Agent Status -->
-                <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                    <h3 class="text-lg font-semibold text-white mb-4">A.R.I.A Status</h3>
-                    <div id="agent-status" class="px-4 py-2 rounded-lg font-medium bg-gray-900/30 text-gray-300 border border-gray-600">
-                        Initializing A.R.I.A...
-                    </div>
-                </div>
+                <input type="file" id="import-config" accept=".json" class="hidden">
             </div>
-
-            <!-- Middle Column: Current Turn -->
-            <div class="lg:col-span-1">
-                <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-700 h-full">
-                    <h3 class="text-lg font-semibold text-white mb-4">Current Turn</h3>
-                    <div id="current-turn-container" class="min-h-[200px]">
-                        <div class="text-sm text-gray-400 mb-2">Current Turn</div>
-                        <div class="p-3 bg-gray-800/30 rounded-lg border border-gray-600">
-                            <div class="text-gray-400">Start conversation with A.R.I.A to see real-time transcription</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right Column: Turn History -->
-            <div class="lg:col-span-1">
-                <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-700 h-full">
-                    <h3 class="text-lg font-semibold text-white mb-4">Conversation History</h3>
-                    <div id="turn-history-container" class="max-h-[400px] overflow-y-auto space-y-2">
-                        <div class="text-gray-400 text-sm">No conversations yet. Start speaking to experience A.R.I.A's intelligence!</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- System Messages -->
-        <div class="mt-6">
-            <div class="bg-gray-800/50 rounded-lg p-4 border border-gray-700">
-                <h3 class="text-lg font-semibold text-white mb-4">System Messages</h3>
-                <div id="system-messages" class="max-h-[200px] overflow-y-auto space-y-2">
-                    <div class="mb-2 p-3 bg-blue-900/20 border border-blue-600 rounded-lg text-blue-300">
-                        <div class="text-xs text-blue-400 mb-1">System Status</div>
-                        <div class="text-sm">A.R.I.A initialized with British voice signature. Click "Start Conversation" to begin.</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Instructions -->
-        <div class="mt-6 bg-gray-800/30 rounded-lg p-4 border border-gray-700">
-            <h4 class="text-lg font-semibold text-white mb-3">Day 24 - A.R.I.A Instructions</h4>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-300">
-                <div>
-                    <strong class="text-blue-400">Speak naturally:</strong> A.R.I.A uses advanced turn detection to understand when you're finished
-                </div>
-                <div>
-                    <strong class="text-green-400">Consistent voice:</strong> A.R.I.A maintains a signature British voice for authentic character experience
-                </div>
-                <div>
-                    <strong class="text-purple-400">JARVIS-style responses:</strong> Professional, intelligent, and anticipatory assistance
-                </div>
-                <div>
-                    <strong class="text-orange-400">Memory enabled:</strong> A.R.I.A remembers your conversation context and preferences
-                </div>
-            </div>
-            <div class="mt-3 text-xs text-gray-500 text-center">
-                Using AssemblyAI • Google Gemini • Murf AI • A.R.I.A Persona System with Signature Voice
+                
+            <!-- Environment Keys Toggle -->
+            <div class="border-t border-gray-700 pt-4 mt-4">
+                <label class="flex items-center justify-between">
+                    <span class="text-sm text-gray-300 flex items-center">
+                        <i class="fas fa-code text-gray-400 mr-2"></i>
+                        Prefer Environment Variables
+                    </span>
+                    <input type="checkbox" id="use-env-keys" class="rounded focus:ring-2 focus:ring-blue-500">
+                </label>
+                <p class="text-xs text-gray-500 mt-1 ml-6">Use .env file keys when available</p>
             </div>
         </div>
     </div>
-
+    
+    <!-- Main Content -->
+    <div class="flex flex-col min-h-screen">
+        <!-- Header -->
+        <header class="glass-effect border-b border-gray-600 px-6 py-4 shadow-lg">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <button id="open-config" class="text-gray-300 hover:text-white hover:bg-gray-700/50 p-3 rounded-lg transition-all">
+                        <i class="fas fa-cog text-xl"></i>
+                    </button>
+                    <div>
+                        <h1 class="text-3xl font-bold gradient-text">
+                            A.R.I.A
+                        </h1>
+                        <p class="text-gray-400 text-sm font-medium">Advanced Responsive Intelligence Assistant • Day 27</p>
+                    </div>
+                </div>
+                
+                <!-- Status Indicators -->
+                <div class="flex items-center space-x-6">
+                    <div class="flex items-center space-x-2">
+                        <div id="connection-status" class="w-3 h-3 bg-red-500 rounded-full shadow-sm"></div>
+                        <span class="text-sm text-gray-300 font-medium">Connection</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <div id="api-health-status" class="w-3 h-3 bg-yellow-500 rounded-full shadow-sm"></div>
+                        <span class="text-sm text-gray-300 font-medium">APIs</span>
+                    </div>
+                    <div class="text-xs text-gray-500 bg-gray-800/50 px-3 py-1 rounded-full">
+                        v2.0 • Config Ready
+                    </div>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Main Interface -->
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Left Panel - Voice Controls -->
+            <div class="w-80 glass-effect border-r border-gray-600 p-6 overflow-y-auto">
+                <div class="space-y-6">
+                    <!-- Voice Signature -->
+                    <div class="bg-gradient-to-br from-blue-900/30 to-purple-900/30 rounded-xl p-5 border border-blue-500/30 shadow-lg">
+                        <h3 class="font-bold text-blue-400 mb-4 flex items-center">
+                            <i class="fas fa-microphone mr-2"></i>
+                            Voice Signature
+                        </h3>
+                        <div class="space-y-3 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-gray-300">Voice:</span>
+                                <span class="text-white font-medium">British Male</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-300">Style:</span>
+                                <span class="text-white font-medium">Professional</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-300">Persona:</span>
+                                <span class="text-white font-medium">JARVIS-Inspired</span>
+                            </div>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-3 italic">
+                            "Sophisticated intelligence with authentic character experience"
+                        </p>
+                    </div>
+                    
+                    <!-- Controls -->
+                    <div class="space-y-4">
+                        <button id="record-button" class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">
+                            <i id="record-icon" class="fas fa-microphone mr-3"></i>
+                            <i id="stop-icon" class="fas fa-stop mr-3" style="display: none;"></i>
+                            Start Conversation
+                        </button>
+                        
+                        <div id="agent-status" class="text-center py-3 px-4 rounded-xl glass-effect text-gray-300 border border-gray-600 font-medium">
+                            Initializing A.R.I.A...
+                        </div>
+                        
+                        <!-- Quick Actions -->
+                        <div class="flex gap-2">
+                            <button onclick="window.testAudio && window.testAudio()" class="flex-1 bg-gray-700/50 hover:bg-gray-700 py-2 rounded-lg text-xs transition-colors">
+                                <i class="fas fa-volume-up mr-1"></i>Test Audio
+                            </button>
+                            <button onclick="window.inspectAudio && window.inspectAudio()" class="flex-1 bg-gray-700/50 hover:bg-gray-700 py-2 rounded-lg text-xs transition-colors">
+                                <i class="fas fa-bug mr-1"></i>Debug
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Panel - Conversation -->
+            <div class="flex-1 flex flex-col overflow-hidden">
+                <!-- Current Turn -->
+                <div class="glass-effect border-b border-gray-600 p-6">
+                    <h3 class="text-lg font-bold mb-3 text-blue-400 flex items-center">
+                        <i class="fas fa-comment-dots mr-2"></i>
+                        Current Turn
+                    </h3>
+                    <div id="current-turn-container" class="min-h-[80px] bg-gradient-to-r from-gray-900/50 to-gray-800/50 rounded-xl p-5 border border-gray-700 shadow-inner">
+                        <p class="text-gray-400 italic flex items-center">
+                            <i class="fas fa-info-circle mr-2 text-blue-400"></i>
+                            Configure your API keys and start conversation to see real-time transcription
+                        </p>
+                    </div>
+                </div>
+                
+                <!-- Conversation History -->
+                <div class="flex-1 p-6 overflow-y-auto">
+                    <h3 class="text-lg font-bold mb-4 text-purple-400 flex items-center">
+                        <i class="fas fa-history mr-2"></i>
+                        Conversation History
+                    </h3>
+                    <div id="turn-history-container" class="space-y-4">
+                        <div class="text-center py-12">
+                            <div class="bg-gradient-to-br from-purple-900/20 to-blue-900/20 rounded-xl p-8 border border-purple-500/30">
+                                <i class="fas fa-robot text-4xl text-purple-400 mb-4"></i>
+                                <p class="text-gray-400 mb-2">No conversations yet</p>
+                                <p class="text-sm text-gray-500">Configure your API keys and start speaking to experience A.R.I.A's intelligence!</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- System Messages -->
+                <div class="border-t border-gray-600 p-4 glass-effect">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-gray-400">System Messages</span>
+                        <button onclick="document.getElementById('system-messages').innerHTML=''" class="text-xs text-gray-500 hover:text-gray-300">
+                            <i class="fas fa-trash mr-1"></i>Clear
+                        </button>
+                    </div>
+                    <div id="system-messages" class="max-h-24 overflow-y-auto space-y-1 text-sm">
+                        <div class="text-blue-400">
+                            <i class="fas fa-info-circle mr-2"></i>
+                            <span class="text-gray-500">[System]</span>
+                            A.R.I.A Day 27 initialized. Open configuration panel to setup API keys.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <script src="/static/script.js"></script>
 </body>
 </html>
